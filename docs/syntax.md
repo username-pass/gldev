@@ -80,9 +80,14 @@ returns a temporary variable with the value specified
 
 sets the target to the value of the source
 
-### (~ (name) (value/source))
+### (~ (name))
 
 creates a new variable with the specified value
+
+### ($ (name))
+
+refers to the variable with the specified value.
+Does so as a basic variable, with m=2, and operations going across all bytes individually.
 
 ### (@ (array) (index))
 
