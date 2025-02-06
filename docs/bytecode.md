@@ -14,6 +14,28 @@ push adds to stack, write writes from stack. If you don't push anything, push a 
 
 This file is still a massive WIP
 
+Example:
+### (w (cond) (code))
+w ->
+push: `end`
+push: `$next`
+push: `while`
+
+cond ->
+do stuff
+
+) ->
+write top (while)
+
+code ->
+do stuff
+
+) ->
+write top ($next = (cond))
+
+) ->
+write top (end)
+
 ## NOTE
 
 For now, I am going to treat variables as simple, and copy all of their respective bytes
