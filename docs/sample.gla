@@ -1,0 +1,35 @@
+init 0
+		;	create variables
+nv A
+set 2
+nv B
+set 1
+nv C
+set 1
+jta tmp
+nv i
+set 4
+
+			;	while loop
+while
+
+				;	set C to A
+	jta vars
+	jtv C
+	clear 1
+	add A 1 1
+
+				;	add B to A
+	jtv A
+	add B 1 1
+
+				;	set B to C
+	jtv B
+	clear 1
+	add C 1 1
+
+				;	subtract 1 from i
+	jta tmp
+	jtv i
+	mkconst 1
+	sub const 1
