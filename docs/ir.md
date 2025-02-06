@@ -4,11 +4,19 @@ This will compile down to bfasm and wsasm
 
 ## Commands:
 
+### macro $l
+
+starts a macro definition with the label $l
+
+### endmacro
+
+ends the macro definition. From now on, every time $l is found, it will be replaced with the code in between the `macro` and `endmacro`
+
 ### init N
 
 sets up the 0th variables, and creates N = N, creating N arrays for future use. 
 
-### nz $l
+### nv $l
 
 creates a new variable with the label $l in the current array
 
@@ -20,29 +28,33 @@ sets the array specified by $k to be the current array to do things with
 
 sets the variable specified by $l to be the current variable specified for changes
 
-### set $k $k1 ... $kn
+### load $l $k
 
-sets the current variable's value to be set to the specified bytes. $k is the 0th byte, $k1 is the 1st byte, etc.
+sets WC to the value of the $kth DC at the variable $l
 
-### cp $l $k
+### wp $k
 
-copies the $kth byte of the varible $l to the $kth byte of the current variable
+adds the WC to the $kth DC
 
-### mv $l $k
+### ws $k
 
-moves the $kth byte of $l to the $kth byte of the current variable
+subtracts the WC from the $kth DC (ends at 0)
 
-### add $l $k $k2
+### wf $k
 
-adds the $kth byte of $l to the $k2th byte of the current variable
+sets the $kth DC to the value of WC, clearing the old value
 
-### sub $l $k $k2
+### lz
 
-subtracts the $kth byte of $l to the $k2th byte of the current variable
+sets the value of the WC to 0
+
+### lval $k
+
+sets the WC to $k
 
 ### while
 
-will loop until the variable pointed at it's 0th byte is non-zero
+will loop until the WC of the variable pointed at is zero
 
 ### end
 
