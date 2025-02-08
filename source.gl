@@ -1,15 +1,10 @@
-((c create the variables)
-(: (~A) (#2))
-(: (~B) (#1))
-(: (~C) (#1))
-(c create the counter)
-(: (~i) (#4))
-(c only operate i times)
-(w (> ($i) (#0)) (
-	(: ($C) ($A))		(c set C to A)
-	
-	(+ ($A) ($B))		(c add A and B)
-
-	(: ($B) ($C))		(c set B to C)
-
-	(- ($i) (#1))))	(c decrement the counter)
+(
+(: (~ A) (# 2))
+(: (~ B) (# 1))
+(: (~ C) (# 1))
+(: (~ i) (# 4))
+(w (> ($ i) (# 0)) (
+	(: ($ C) ($ A))		
+	(+ ($ A) ($ B))		
+	(: ($ B) ($ C))		
+	(- ($ i) (# 1))))	
