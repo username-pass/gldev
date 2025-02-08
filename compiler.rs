@@ -5,80 +5,55 @@ use std::collections::HashMap;
 const FILENAME: &str = "source.gl";
 
 fn main() -> std::io::Result<()> {
-    //file reading stuff
-    let mut file = File::open(FILENAME)?;
+
+    let mut params = Vec::new();
+    let mut macros = Vec::new();
+    let mut depth = 0;
+    //read types:
+    // 0 = command (trying to find command)
+    // 1 = param 
+    let mut cur_statement = Vec::new();
     let mut contents = String::new();
 
-    //important definitions
+    // push default
+    cur_statement.push(String::from(""));
+    params.push(Vec::new());
     
-    // create macros map
-    let mut macros = Vec::new();
-    let mut params = Vec::new();
-    let mut bytecode_stack = Vec::new();
-    bytecode_stack.push("testing");
-
-    macros.push(new_macromap());
-
-    // depth is how many layers deep in the nesting we are
-    let mut depth = 0;
-
-    // 0 = command
-    // 1 = param
-    let mut read_type = 0;
-
-    let mut cur_argument = String::from("");
-    
-    file.read_to_string(&mut contents)?;
-    // assert_eq!(contents, "Hello, world!\n");
+    read_file(&mut contents)?;
     for c in contents.chars() {
-
-        print!("{}",c);
-
-        //ignore whitespace
-        if read_type == 0 && (c == ' ' || c == '\t' || c == '\n') {
-            continue;
-        }
-        else if c == '(' {
-            params[depth].last() = String::from("");
-            params[depth].last().push(c);
-            depth += 1;
-            read_type = 0;
-            params[depth] = Vec::new();
-            // print!("depth: {}\n",depth);
-            print!("{} ", depth);
-        }
-        else if c == ')' {
-            params[depth].push(c);
-            depth -= 1;
-            read_type = 0;
-            params[depth+1].push(params[depth].last());
-            // print!("undepth: {}, arg '{}'\n", depth, cur_argument);
-            print!("{} ", depth);
-            if cur_argument.chars().count() > 0 {
-                // print!("evaluating arg '{}' at depth\n", cur_argument);
-                cur_argument = String::from("");
-            }
-            // print!("moving up in depth\n")
-        }
-        // now evaluate parameters and functions
-        else if read_type == 0 { // if it's a command
-            params[depth].last().push(c);
-            read_type = 1;
-            do_bytecode(c, depth, macros.clone(), &mut bytecode_stack)
-        }
-        else if read_type == 1 {
-            params[depth].last().push(c);
-            cur_argument.push(c);
-        }
+        do_bytecode(c,&mut depth, &mut params, &mut cur_statement, &mut macros);
+        print!("{}", c);
     }
     Ok(())
 }
+fn do_bytecode(c: char, depth: &mut usize, params: &mut Vec< Vec<String>>, cur_statement: &mut Vec<String>, macros: &mut Vec<String>) {
 
-fn new_macromap() -> std::collections::HashMap<String, String> {
-    return HashMap::new();
+    // ensuring that the read type is set in the first place
+    if cur_statement.len() >= *depth {
+        cur_statement.push(String::from(""));
+        params.push(Vec::new());
+    }
+
+    if c == '(' {
+        // increase depth due to paren
+        *depth += 1;
+        //create new set of params
+        params.push(Vec::new());
+        print!("{}",depth);
+        cur_statement[*depth].push('(');
+    }
+    else if c == ')' {
+        //add param to prev
+        let tmp = String::from(&cur_statement[*depth]);
+        params[*depth-1].push(tmp.clone());
+        print!("| len: {}\tdepth: {} |", params[*depth].len(), depth);
+        cur_statement[*depth-1] += &tmp;
+        *depth -= 1;
+    }
 }
-fn do_bytecode(c: char, depth: usize, macros: Vec<std::collections::HashMap<String, String>>, bytecode_stack: &mut Vec<&str>) {
-    // print!("running command {}\n", c);
-    print!("C");
-    bytecode_stack.push("test")
+
+fn read_file(contents: &mut String) -> std::io::Result<()> {
+    let mut file = File::open(FILENAME)?;
+    file.read_to_string(contents)?;
+    Ok(())
 }
