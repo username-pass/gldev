@@ -16,41 +16,74 @@ fn main() -> std::io::Result<()> {
     let mut contents = String::new();
 
     // push default
-    cur_statement.push(String::from(""));
-    params.push(Vec::new());
-    
+    // cur_statement.push(String::from(""));
+    // params.push(Vec::new());
+    print!("({})\n", params.len());
     read_file(&mut contents)?;
     for c in contents.chars() {
         do_bytecode(c,&mut depth, &mut params, &mut cur_statement, &mut macros);
-        print!("{}", c);
+        // print!("{}", c);
     }
     Ok(())
 }
+
+
+
 fn do_bytecode(c: char, depth: &mut usize, params: &mut Vec< Vec<String>>, cur_statement: &mut Vec<String>, macros: &mut Vec<String>) {
-
-    // ensuring that the read type is set in the first place
-    if cur_statement.len() >= *depth {
-        cur_statement.push(String::from(""));
-        params.push(Vec::new());
-    }
-
+    print!("{}", c);
     if c == '(' {
-        // increase depth due to paren
+        print!("\r\t\t\t\t");
+        for param in &mut *params {
+                print!("\t{:?}", param);
+        }
+        print!("\r\t\t\tlen: {}\tdepth: {}\n", params.len(), depth);
         *depth += 1;
-        //create new set of params
         params.push(Vec::new());
-        print!("{}",depth);
-        cur_statement[*depth].push('(');
     }
     else if c == ')' {
-        //add param to prev
-        let tmp = String::from(&cur_statement[*depth]);
-        params[*depth-1].push(tmp.clone());
-        print!("| len: {}\tdepth: {} |", params[*depth].len(), depth);
-        cur_statement[*depth-1] += &tmp;
         *depth -= 1;
+        eval_param(params.last());
+        params.pop();
+        print!("\r\t\t\t\t");
+        for param in &mut *params {
+                print!("\t{:?}", param);
+        }
+        print!("\r\t\t\tlen: {}\tdepth: {}\n", params.len(), depth);
+    }
+    else {
+        
     }
 }
+
+fn eval_param (param: &mut Option<Vec<String>>) {
+    
+}
+// {
+
+//     // ensuring that the read type is set in the first place
+//     if cur_statement.len() >= *depth && false {
+//         cur_statement.push(String::from(""));
+//         // params.push(Vec::new());
+//     }
+
+//     if c == '(' {
+//         // increase depth due to paren
+//         *depth += 1;
+//         //create new set of params
+//         params.push(Vec::new());
+//         print!("{}",depth);
+//         cur_statement[*depth].push('(');
+//     }
+//     else if c == ')' {
+//         //add param to prev
+//         let tmp = String::from(&cur_statement[*depth]);
+//         params[*depth].push(tmp.clone());
+//         cur_statement[*depth-1] += &tmp;
+//         // print!("| len: {}\tdepth: {} |", params/*[*depth]*/.len(), depth);
+//         print!("{:?}",params);
+//         *depth -= 1;
+//     }
+// }
 
 fn read_file(contents: &mut String) -> std::io::Result<()> {
     let mut file = File::open(FILENAME)?;
