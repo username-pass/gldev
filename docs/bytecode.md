@@ -6,6 +6,17 @@ For example: `(+ A B)` will add B to A.
 
 ## NOTE
 
+Function definitions use the following to define them
+`(` can perform:
+push: `push (str) of token to bytecode stack`
+nop: `nothing`
+
+`)` can perform:
+pop: `pops the top of the stack, and evaluates it`
+write: `writes a string directly to bytecode.`
+neval: `writes the token to bytecode without evaluating`
+nop: `nothing`
+
 Bytecode will be created in the following way:
 push: `stuff to push to bytecode stack`
 write: `stuff to write to bytecode stack`
@@ -17,24 +28,17 @@ This file is still a massive WIP
 Example:
 ### (w (cond) (code))
 w ->
-push: `end`
-push: `$next`
-push: `while`
-
-cond ->
-do stuff
-
-) ->
-write top (while)
-
-code ->
-do stuff
-
-) ->
-write top ($next = (cond))
-
-) ->
-write top (end)
+w
+(
+push
+)
+eval
+write "while\n"
+(
+)
+eval
+pop
+write "end\n"
 
 ## NOTE
 
@@ -49,7 +53,9 @@ Constants and other arguments are notated with a function, for now seen as the
 
 ### (N <N>)
 
-init N
+N
+write "init "
+neval
 
 ### (w (condition) (code))
 
@@ -65,6 +71,17 @@ end
 
 ### (f (condition) (code))
 
+(
+)
+eval
+write "while\n"
+(
+)
+eval
+write "lz\n"
+write "end\n"
+
+
 (condition)
 while
   (code)
@@ -73,6 +90,13 @@ end      ; ensures that it is false
 
 ### (+ (target) (summand))
 
+(
+)
+eval
+(
+)
+eval
+write "add\n"
 
 (target)
 (summand)
@@ -80,6 +104,14 @@ add       ; (macro defined by summand)
 
 ### (- (target) (subtrahend))
 
+
+(
+)
+eval
+(
+)
+eval
+write "sub\n"
 
 (target)
 (subtrahend)
@@ -89,15 +121,31 @@ subtracts the subtrahend from the target variable
 
 ### (> (left) (right))
 
+(
+)
+eval
+(
+)
+eval
+write "subwz\n"
+write "cmp"
 
 (left)
 subwz (right) 1 1 ; (subtracts until 0, puts result in WC)
-mvc 1        ; (move: AN -> WC)
 
 returns true if `left > right`
 
 ### (< (left) (right))
 
+
+(
+)
+eval
+(
+)
+eval
+write "subwz\n"
+write "cmp"
 
 (right)
 subwz (left) 1 1 ; (subtracts until 0, puts result in WC)
@@ -107,6 +155,16 @@ returns true if `left > right`
 
 ### (= (left) (right))
 
+
+(
+)
+eval
+(
+)
+eval
+write "sub\n"
+write "cmp"
+
 (left)
 sub (right) 1 1 ; subtracts
 mvc 1
@@ -115,7 +173,14 @@ returns true if `left = right`
 
 ### (| (left) (right))
 
-
+(
+)
+eval
+(
+)
+eval
+write "add\n"
+write "cmp"
 
 returns true if either left is true or right is true
 
