@@ -7,15 +7,18 @@ For example: `(+ A B)` will add B to A.
 ## NOTE
 
 Function definitions use the following to define them
-`(` can perform:
-push: `push (str) of token to bytecode stack`
-nop: `nothing`
 
-`)` can perform:
-pop: `pops the top of the stack, and evaluates it`
-write: `writes a string directly to bytecode.`
-neval: `writes the token to bytecode without evaluating`
-nop: `nothing`
+(p)ush : `pushes param to stack`
+(e)val : `pops value from stack
+          and evaluates the val`
+(w)rite: `pops value from stack
+          then writes the value`
+(s)trng: `writes a specific val
+          to bytecode as string`
+( )end : `finishes a string val
+          being written to code`
+(n)ext : `changes to next param`
+(x)noop: `does nothing to state`
 
 Bytecode will be created in the following way:
 push: `stuff to push to bytecode stack`
@@ -27,19 +30,18 @@ This file is still a massive WIP
 
 Example:
 ### (w (cond) (code))
-w ->
-w
-(
-push
-)
-eval
-write "while\n"
-(
-)
-eval
-pop
-write "end\n"
-
+w ->          "wnxnppeswhile\n npeesend\n "
+"w"         -> this is for the `w` command
+"n"         -> move to next param (default)
+"x"         -> do nothing by default to any extra params
+"n"         -> move to next param (cond)
+"p"         -> push val to stack
+"pe"        -> evaluate condition
+"swhile\n " -> writes "while\n"
+"n"         -> goes to next parameter
+"pe"        -> evaluates code
+"e"         -> pops and evaluates condition
+"send\n "    -> writes "end\n"
 ## NOTE
 
 For now, I am going to treat variables as simple, and copy all of their respective bytes
@@ -53,7 +55,8 @@ Constants and other arguments are notated with a function, for now seen as the
 
 ### (N <N>)
 
-N
+N-> "Nnxnsinit pw"
+
 write "init "
 neval
 
@@ -66,6 +69,8 @@ while
 end
 
 ### (c comment)
+
+c -> "cnxn"
 
 <nothing>
 
