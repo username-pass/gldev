@@ -1,0 +1,1 @@
+To find the difference between parentheses ordered pair index and depth, at every `)`, add 1 to delta until `(`, inclusive
