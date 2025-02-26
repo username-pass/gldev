@@ -12,13 +12,16 @@ Function definitions use the following to define them
 (e)val : `pops value from stack
           and evaluates the val`
 (w)rite: `pops value from stack
-          then writes the value`
+          then writes the value
+          must be final command
+          in the specific param`
 (s)trng: `writes a specific val
           to bytecode as string`
 ( )end : `finishes a string val
           being written to code`
 (n)ext : `changes to next param`
 (x)noop: `does nothing to state`
+(q)quit: `exits from definition`
 
 Bytecode will be created in the following way:
 push: `stuff to push to bytecode stack`
@@ -30,7 +33,7 @@ This file is still a massive WIP
 
 Example:
 ### (w (cond) (code))
-w ->          "wnxnppeswhile\n npeesend\n "
+w ->          "wnxnppeswhile\n npeesend\n q"
 "w"         -> this is for the `w` command
 "n"         -> move to next param (default)
 "x"         -> do nothing by default to any extra params
@@ -41,7 +44,8 @@ w ->          "wnxnppeswhile\n npeesend\n "
 "n"         -> goes to next parameter
 "pe"        -> evaluates code
 "e"         -> pops and evaluates condition
-"send\n "    -> writes "end\n"
+"send\n "   -> writes "end\n"
+"q"         -> finishes definition
 ## NOTE
 
 For now, I am going to treat variables as simple, and copy all of their respective bytes
@@ -55,10 +59,8 @@ Constants and other arguments are notated with a function, for now seen as the
 
 ### (N <N>)
 
-N-> "Nnxnsinit pw"
+N-> "Nnxnsinit pws\n q"
 
-write "init "
-neval
 
 ### (w (condition) (code))
 
@@ -70,7 +72,7 @@ end
 
 ### (c comment)
 
-c -> "cnxn"
+c -> "cnxq"
 
 <nothing>
 
