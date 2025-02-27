@@ -1,0 +1,133 @@
+
+/* //previous items
+if global_idx > 0 {
+    let (c_prev, token_type_prev, depth_prev, delta_prev) = (contents[global_idx - 1]);
+}
+// current items
+let (c, token_type, depth, delta) = contents[global_idx];
+if token_type == COMMAND {
+    let (start, end, cmd_loc, _) = parens[depth + delta - 1];
+    // add until the state matches the depth + delta (paren loc)
+    loop {
+        if state.len() >= depth + delta - 1 {
+            break;
+        }
+        state.push((0, 0, 0));
+    }
+    // push current state
+    state.push((delta, global_idx, 0, cmd_loc));
+    // command, do stuff
+    print!("evaluating command {}\n", cmd);
+    print!(
+        "depth + delta: {}\tstate.len(): {}\n",
+        depth + delta,
+        state.len()
+    );
+} else if token_type == OPEN_PAREN {
+    // beginning of a param, check current state and deal with it
+    let (delta, cur_idx, def_idx, cmd_loc) = &state[depth_prev + delta_prev - 1];
+    let (cmd, def) = &commands[depth_prev + delta_prev - 1];
+
+} */
+
+/* fn do_bytecode_less_old(
+    contents: &mut Vec<(char, u8, usize, usize)>,
+    parens: &mut Vec<(usize, usize, usize, bool)>,
+    defs: String,
+) {
+    // curren command for every depth (so it can be nested)
+    // (cmd name, cmd def)
+    let mut cur_command = Vec::new();
+    // the stack of commands for bytecode generation
+    let mut command_stack = Vec::new();
+    let mut last_type = OPEN_PAREN;
+    let mut cmd_pointer = 0;
+
+    //loop through the code
+    loop {
+        if cmd_pointer >= contents.len() {
+            break;
+        }
+        let (c, token_type, depth, delta) = contents[cmd_pointer];
+        print!("token type: {}\tcmd_pointer: {}\n", token_type, cmd_pointer);
+        if token_type == COMMAND {
+            // it's a command, need to find the definition
+            // make the command at the depth exist
+            print!("depth: \t{}, len: {}\n", depth, cur_command.len());
+            loop {
+                if cur_command.len() > depth {
+                    break;
+                } else {
+                    cur_command.push((String::from(""), String::from("")));
+                }
+            }
+            // reset current command
+            cur_command[depth] = String::from(c);
+
+            // get the rest of the command
+            loop {
+                cmd_pointer += 1;
+                let (c, token_type, depth, delta) = contents[cmd_pointer];
+                if token_type == COMMAND {
+                    // add the rest of the command
+                    cur_command[depth].push((c, String::from("")));
+                } else {
+                    break;
+                }
+            }
+            print!("command: {:?}\n", cur_command[depth]);
+            // found command
+            // now just need to find parameters
+            // step one is find corresponding parens
+            let (start, end, _, _) = parens[depth + delta - 1];
+
+            let (cmd, def) = find_def(defs.clone(), cur_command[depth].1.clone());
+            cur_command[depth] = (cmd, depth);
+            print!("command: {}\tdef: {}\n", cmd, def);
+            print!("start: {}\tend: {}\n", start, end);
+
+            //now just need to apply the definitions
+
+            // steps to do so:
+            // 1) go until you reach an open paren
+            // 2) read and execute all commands for that section
+            // 3) skip to end of open paren
+            // 4) repeat
+
+            let mut def_cmd_pointer = 0;
+            let mut def_is_escaped = false;
+            loop {
+                if cmd_pointer >= contents.len() {
+                    break;
+                }
+                let (c, token_type, depth, delta) = contents[cmd_pointer];
+                if token_type == OPEN_PAREN {
+                    //need to start doing stuff
+                    loop {
+                        // break if it's at an 'n', and not escaped, or out of scope
+                        if (def[def_cmd_pointer] == 'n' && !def_is_escaped)
+                            || def_cmd_pointer >= def.len()
+                        {
+                            break;
+                        }
+                        let bytecode_cmd = def[def_cmd_pointer];
+                        if bytecode_cmd == 'p' {
+                            // pushes param to stack
+                            command_stack.push(parens[depth + delta - 1]);
+                        } else if bytecode_cmd == 'e' {
+                            // pops value from stack
+                            // then writes the value
+                            let param = command_stack.last();
+                        }
+                    }
+                }
+
+                cmd_pointer += 1;
+            }
+        } else {
+            cmd_pointer += 1;
+        }
+
+        last_type = token_type;
+    }
+} */
