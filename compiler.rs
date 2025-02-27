@@ -24,7 +24,7 @@ fn main() -> std::io::Result<()> {
     // index = depth + delta - 1 (to account for zero indexing)
     let mut commands = Vec::new();
     // the commands used in the code, stored in a vec so that it can be referenced later
-    commands.push((String::from(""), String::from("pwq")));
+    commands.push((String::from(""), String::from("pw"), String::from("q")));
     // push a dummy param for all empty ones. just says to eval
 
     read_file(&mut contents, &mut parens, &mut commands, &mut defs)?;
@@ -44,7 +44,8 @@ fn main() -> std::io::Result<()> {
             );
         }
     }
-    do_bytecode(&mut contents, &mut parens, commands, defs);
+    let bytecode = do_bytecode(&mut contents, &mut parens, commands, defs);
+    print!("Got bytecode!\n===\n{}\n===\n", bytecode);
     Ok(())
 }
 
@@ -63,6 +64,10 @@ fn load_defs(defs: &mut String) {
     defs.push_str(">npwq");
     //temp thing to just evaluate things
     defs.push_str("-npwq");
+    // temp test thing to print a string
+    // I don't know why this needs the extra escape characters,
+    // even though the rest are fine. Maybe look into it??
+    defs.push_str("bcnxnsthis\\\\ is\\ a\\ test\\ output q");
     print!("defs: {}", defs);
 }
 
@@ -71,25 +76,26 @@ fn do_bytecode(
     // contents: (char, type, depth, delta)
     parens: &mut Vec<(usize, usize, usize, bool)>,
     // parens: (start, end, command_loc, marker)
-    commands: Vec<(String, String)>,
+    commands: Vec<(String, String, String)>,
     // commands: (name, def)
     defs: String,
-) {
-    // this is the state at a given param
-    let mut state: Vec<(usize, usize, usize, usize)> = Vec::new();
-    // state holds the state like this:
-    // each depth has its own value in the following format:
-    // (definition_idx, cur_idx, cmd_loc, delta)
-    let mut global_idx = 0;
-    let mut last_type = CLOSE_PAREN;
-    let mut command_stack = Vec::new();
+) -> String {
     let SEARCHING_CMD = 0;
     let WRITING = 1;
     let SEARCHING_PARAM = 2;
-    // only temporary
     let EVALUATING = 3;
+    let STRING_WRITING = 4;
+    // this is the state at a given param
+    let mut state = Vec::new();
+    // state holds the state like this:
+    // each depth has its own value in the following format:
+    // (definition_idx, cur_idx, cmd_loc, start, end, mode, is_escaped)
+    let mut global_idx = 0;
+    let mut last_type = CLOSE_PAREN;
+    let mut is_escaped = false;
+    let mut command_stack: Vec<(usize, usize)> = Vec::new();
     let mut mode = SEARCHING_CMD;
-    let mut cur_depth = 0;
+    let mut cur_state = 0;
     let mut output = String::from("");
     // this should work as each item in the loop does one thing. There shouldn't be
     // too many nested layers.
@@ -98,21 +104,171 @@ fn do_bytecode(
     // the idea is that you change modes, and each mode does one different thing
     // so write might write the current char, and search cmd might just move to the
     // next cmd
+    // find location of command
+    state.push((
+        0,
+        0,
+        parens[0].2,
+        parens[0].0,
+        parens[0].1,
+        SEARCHING_CMD,
+        false,
+    ));
     loop {
+        // global_idx is to find the current mode and all that
         if global_idx >= contents.len() {
             break;
         }
+        let (
+            ref mut def_idx,
+            ref mut cur_idx,
+            cmd_loc,
+            start,
+            end,
+            ref mut dmode,
+            ref mut is_escaped,
+        ) = state[cur_state];
+        // if you reach the end of the param, re-evaluate with previous param
+        if *cur_idx > end {
+            // finished the param, go back to prev
+            let (c_new, token_type_new, depth_new, delta_new) = contents[*cur_idx];
+            let (start_new, end_new, cmd_loc_new, _) = parens[depth_new + delta_new - 1];
+            cur_state = depth_new + delta_new - 1;
+
+            print!(
+                "new state!, max_len: {}\tcur_state: {}\t{:?}\n",
+                contents.len(),
+                cur_state,
+                state[cur_state]
+            );
+            // if it's the base case, break
+            if cur_state == 0 {
+                break;
+            }
+            // found new state, now start re-evaluating
+            continue;
+        }
+
+        // now to evaluate the modes
+        if *dmode == SEARCHING_CMD {
+            // looking for next command, so increment idx until it's a command
+            let (c, token_type, depth, delta) = contents[*cur_idx];
+            if token_type == COMMAND {
+                // this is a command, break and continue to evaluation
+                *dmode = EVALUATING;
+                continue;
+            }
+            // no command found
+            // continue searching
+            *cur_idx += 1;
+            continue;
+        } else if *dmode == EVALUATING {
+            //this is the switchboard to find what to do next based on the command
+            let (c, token_type, depth, delta) = contents[*cur_idx];
+            let (cmd, default, def) = &commands[cmd_loc];
+            print!(
+                "c: {}\tcmd: {}\tidx: {}\tlen: {}\tdefault: \"{}\"\tdef: \"{}\"\n",
+                c,
+                cmd,
+                *def_idx,
+                def.len(),
+                default,
+                def,
+            );
+
+            let next_cmd = def.chars().nth(*def_idx).unwrap();
+            print!("next cmd: {}\n", next_cmd);
+            if next_cmd == 'x' {
+                // no-op, do nothing
+                *def_idx += 1;
+                continue;
+            } else if next_cmd == 's' {
+                print!("String command!\n");
+                // command is to write a string
+                *dmode = STRING_WRITING;
+                *def_idx += 1;
+                continue;
+                default = &String::from("");
+            } else if next_cmd == 'p' {
+                // push value to stack
+                *dmode = SEARCHING_PARAM;
+                continue;
+            } else if next_cmd == 'e' {
+                *dmode = SEARCHING_PARAM;
+                continue;
+            } else if next_cmd == 'w' {
+                *dmode = SEARCHING_PARAM;
+                continue;
+            } else if next_cmd == 'q' {
+                // end of command, going to next command
+                *dmode = SEARCHING_CMD;
+                *cur_idx = end;
+            } else {
+                // this probably shouldn't be hit, so just panic
+                assert!(next_cmd == '2');
+            }
+        } else if *dmode == STRING_WRITING {
+            let (cmd, default, def) = &commands[cmd_loc];
+            let cur_char = def.chars().nth(*def_idx).unwrap();
+            print!("writing string. cur_char: {}\n", cur_char);
+            if !(*is_escaped) && cur_char == '\\' {
+                *is_escaped = true;
+                *def_idx += 1;
+                continue;
+            } else if !(*is_escaped) && cur_char == ' ' {
+                // end of string to write
+                *dmode = EVALUATING;
+                *def_idx += 1;
+                continue;
+            } else if !(*is_escaped) && cur_char == 'q' {
+                // end of definition, refer to EVALUATING mode to deal with that
+                *dmode = EVALUATING;
+                continue;
+            } else if *is_escaped && cur_char == 'n' {
+                // \n character, return newline
+                output.push('\n');
+                *def_idx += 1;
+                continue;
+            } else if *is_escaped && cur_char == 't' {
+                // \t character, return tab
+                output.push('\t');
+                *def_idx += 1;
+                continue;
+            } else {
+                // reset being escaped
+                *is_escaped = false;
+                output.push(cur_char);
+                *def_idx += 1;
+            }
+        }
+    }
+    return output;
+    /* loop {
+        if true || global_idx >= contents.len() {
+            break;
+        }
+        print!("idx: {}, mode: {}, state: {:?}\n", global_idx, mode, state);
+
         if mode == SEARCHING_CMD {
+            // look for next command to execute
             let (c, token_type, depth, delta) = contents[global_idx];
+            let (start, end, cmd_loc, _) = parens[depth + delta - 1];
             cur_depth = depth;
             if token_type == COMMAND {
                 loop {
                     if state.len() >= depth + delta - 1 {
+                        print!(
+                            "breaking, len: {}\td+d-1: {}\n",
+                            state.len(),
+                            depth + delta - 1
+                        );
                         break;
                     }
                     // junk items, should never be used, in theory
                     state.push((0, 0, 0, 0));
                 }
+                state.push((0, global_idx, cmd_loc, delta));
+                print!("len: {}\tidx: {}\n", state.len(), global_idx);
                 // found command, need to start evaluating
                 mode = SEARCHING_PARAM;
             } else {
@@ -121,34 +277,70 @@ fn do_bytecode(
             }
         } else if mode == SEARCHING_PARAM {
             let (c, token_type, depth, delta) = contents[global_idx];
-            if token_type == OPEN_PAREN {
-                // found param, need to start evaluating previous index
-                let (c_prev, token_type_prev, depth_prev, delta_prev) = contents[global_idx - 1];
-                let (start, end, cmd_loc, _) = parens[depth_prev + delta_prev - 1];
-                let (cmd, def) = commands[cmd_loc];
-                // get cmd def, and try to find what to do next
-                let (def_idx, _, _, _) = &mut state[depth + delta - 1];
-                let cur_def_cmd = def.chars().nth(*def_idx).unwrap();
-                if cur_def_cmd == 'x' {
-                    // no-op, do nothing
-                } else if cur_def_cmd == 's' {
-                    //write value to string
-                } else if cur_def_cmd == 'p' {
-                    // push value to stack
-                } else if cur_def_cmd == 'e' {
-                    // start evaluating again
-                } else if cur_def_cmd == 'w' {
-                    // start writing the current param to output
-                }
+            if token_type == OPEN_PAREN || token_type == SOLO_PARAM {
+                mode = EVALUATING;
             } else {
                 global_idx += 1;
             }
         } else if mode == EVALUATING {
+            // found param, need to start evaluating previous index
+            let (c_prev, token_type_prev, depth_prev, delta_prev) = contents[global_idx - 1];
+            let (start, end, cmd_loc, _) = parens[depth_prev + delta_prev - 1];
+            let (cmd, def) = &commands[cmd_loc];
+            // get cmd def, and try to find what to do next
+
+            let (def_idx, _, _, _) = &mut state[depth_prev + delta_prev - 1];
+            let cur_def_cmd = def.chars().nth(*def_idx).unwrap();
+            print!("cur_def_cmd: {}\n", cur_def_cmd);
+            if cur_def_cmd == 'x' {
+                // no-op, do nothing
+            } else if cur_def_cmd == 's' {
+                //write value to string
+                mode = STRING_WRITING;
+            } else if cur_def_cmd == 'p' {
+                // push value to stack
+                let (c, token_type, depth, delta) = contents[global_idx];
+                let (param_start, param_end, _, _) = parens[depth + delta - 1];
+                print!("pushing to stack, ({},\t{})\n", param_start, param_end);
+                command_stack.push((param_start, param_end));
+            } else if cur_def_cmd == 'e' {
+                // start evaluating again
+            } else if cur_def_cmd == 'w' {
+                // start writing the current param to output
+            }
+        } else if mode == WRITING {
+            let (c_prev, token_type_prev, depth_prev, delta_prev) = contents[global_idx - 1];
+            let (start, end, cmd_loc, _) = parens[depth_prev + delta_prev - 1];
+            let (cmd, def) = &commands[cmd_loc];
+            // get cmd def, and try to find what to do next
+            let (def_idx, _, _, _) = &mut state[depth_prev + delta_prev - 1];
+            let cur_char = def.chars().nth(*def_idx).unwrap();
+            if cur_char == 'n' && !is_escaped {
+                // end of the param
+                mode = SEARCHING_PARAM;
+                *def_idx += 1;
+            } else if cur_char == 'q' && !is_escaped {
+                // end of def, look for next command
+                mode = SEARCHING_CMD
+            } else if cur_char == ' ' && !is_escaped {
+                // end of string to write
+                // TODO: change this to something more descriptive
+                // maybe something like "finding next mode"
+                mode = EVALUATING;
+                *def_idx += 1;
+            } else if cur_char == '\\' && !is_escaped {
+                is_escaped = true;
+                *def_idx += 1;
+            } else {
+                is_escaped = false;
+                output.push(cur_char);
+            }
+        } else if mode == EVALUATING {
             // evaluating the parameters
             let (c, token_type, depth, delta) = contents[global_idx];
-            let (start, end, cmd_loc, _) = &mut parens[depth + delta - 1];
-            let &(cmd, def) = &commands[*cmd_loc];
-            let (definition_idx, cur_idx, cmd_loc, delta) = &state[depth + delta - 1];
+            let &mut (start, end, cmd_loc, _) = &mut parens[depth + delta - 1];
+            let (cmd, def) = &commands[cmd_loc];
+            let (definition_idx, cur_idx, cmd_loc, delta) = &mut state[depth + delta - 1];
             let cur_def_cmd = def.chars().nth(*definition_idx).unwrap();
             if cur_def_cmd == 'p' {
                 //push value to stack
@@ -159,150 +351,18 @@ fn do_bytecode(
 
             *definition_idx += 1;
         }
-    }
+    } */
 }
-// OLD
-/* //previous items
-if global_idx > 0 {
-    let (c_prev, token_type_prev, depth_prev, delta_prev) = (contents[global_idx - 1]);
-}
-// current items
-let (c, token_type, depth, delta) = contents[global_idx];
-if token_type == COMMAND {
-    let (start, end, cmd_loc, _) = parens[depth + delta - 1];
-    // add until the state matches the depth + delta (paren loc)
-    loop {
-        if state.len() >= depth + delta - 1 {
-            break;
-        }
-        state.push((0, 0, 0));
-    }
-    // push current state
-    state.push((delta, global_idx, 0, cmd_loc));
-    // command, do stuff
-    print!("evaluating command {}\n", cmd);
-    print!(
-        "depth + delta: {}\tstate.len(): {}\n",
-        depth + delta,
-        state.len()
-    );
-} else if token_type == OPEN_PAREN {
-    // beginning of a param, check current state and deal with it
-    let (delta, cur_idx, def_idx, cmd_loc) = &state[depth_prev + delta_prev - 1];
-    let (cmd, def) = &commands[depth_prev + delta_prev - 1];
 
-} */
-
-/* fn do_bytecode_less_old(
-    contents: &mut Vec<(char, u8, usize, usize)>,
-    parens: &mut Vec<(usize, usize, usize, bool)>,
-    defs: String,
-) {
-    // curren command for every depth (so it can be nested)
-    // (cmd name, cmd def)
-    let mut cur_command = Vec::new();
-    // the stack of commands for bytecode generation
-    let mut command_stack = Vec::new();
-    let mut last_type = OPEN_PAREN;
-    let mut cmd_pointer = 0;
-
-    //loop through the code
-    loop {
-        if cmd_pointer >= contents.len() {
-            break;
-        }
-        let (c, token_type, depth, delta) = contents[cmd_pointer];
-        print!("token type: {}\tcmd_pointer: {}\n", token_type, cmd_pointer);
-        if token_type == COMMAND {
-            // it's a command, need to find the definition
-            // make the command at the depth exist
-            print!("depth: \t{}, len: {}\n", depth, cur_command.len());
-            loop {
-                if cur_command.len() > depth {
-                    break;
-                } else {
-                    cur_command.push((String::from(""), String::from("")));
-                }
-            }
-            // reset current command
-            cur_command[depth] = String::from(c);
-
-            // get the rest of the command
-            loop {
-                cmd_pointer += 1;
-                let (c, token_type, depth, delta) = contents[cmd_pointer];
-                if token_type == COMMAND {
-                    // add the rest of the command
-                    cur_command[depth].push((c, String::from("")));
-                } else {
-                    break;
-                }
-            }
-            print!("command: {:?}\n", cur_command[depth]);
-            // found command
-            // now just need to find parameters
-            // step one is find corresponding parens
-            let (start, end, _, _) = parens[depth + delta - 1];
-
-            let (cmd, def) = find_def(defs.clone(), cur_command[depth].1.clone());
-            cur_command[depth] = (cmd, depth);
-            print!("command: {}\tdef: {}\n", cmd, def);
-            print!("start: {}\tend: {}\n", start, end);
-
-            //now just need to apply the definitions
-
-            // steps to do so:
-            // 1) go until you reach an open paren
-            // 2) read and execute all commands for that section
-            // 3) skip to end of open paren
-            // 4) repeat
-
-            let mut def_cmd_pointer = 0;
-            let mut def_is_escaped = false;
-            loop {
-                if cmd_pointer >= contents.len() {
-                    break;
-                }
-                let (c, token_type, depth, delta) = contents[cmd_pointer];
-                if token_type == OPEN_PAREN {
-                    //need to start doing stuff
-                    loop {
-                        // break if it's at an 'n', and not escaped, or out of scope
-                        if (def[def_cmd_pointer] == 'n' && !def_is_escaped)
-                            || def_cmd_pointer >= def.len()
-                        {
-                            break;
-                        }
-                        let bytecode_cmd = def[def_cmd_pointer];
-                        if bytecode_cmd == 'p' {
-                            // pushes param to stack
-                            command_stack.push(parens[depth + delta - 1]);
-                        } else if bytecode_cmd == 'e' {
-                            // pops value from stack
-                            // then writes the value
-                            let param = command_stack.last();
-                        }
-                    }
-                }
-
-                cmd_pointer += 1;
-            }
-        } else {
-            cmd_pointer += 1;
-        }
-
-        last_type = token_type;
-    }
-} */
-
-fn find_def(defs: String, searchfor: String) -> (String, String) {
+fn find_def(defs: String, searchfor: String) -> (String, String, String) {
     // now find definition
     let mut def_idx: usize = 0; // the position in the definition vec
     let mut def_start = 0; // the start of the current definition
     let mut cmd = String::from(""); // the actual command
+    let mut default = String::from(""); // the default parameter execution
     let mut def = String::from("pwq"); // the full definition
     let mut is_escaped = false;
-    let mut looking_for_command = true;
+    let mut looking_for = 0; // 0 = command, 1 = default, 2 = everything else
     loop {
         if def_idx >= defs.len() {
             break;
@@ -335,7 +395,7 @@ fn find_def(defs: String, searchfor: String) -> (String, String) {
             if searchfor == cmd {
                 // it's the correct command, exit loop, all is well
                 //         print!("found correct def! {}\n", cmd);
-                return (cmd, def);
+                return (cmd, default, def);
                 // break;
             }
 
@@ -343,18 +403,26 @@ fn find_def(defs: String, searchfor: String) -> (String, String) {
             // set start to next char
             def_start = def_idx + 1;
             // make it look for the command
-            looking_for_command = true;
+            looking_for = 0;
             // set def to blank
             def = String::from("");
+            default = String::from("");
             cmd = String::from("");
         }
         // next param
-        else if cur_char == 'n' && looking_for_command && !is_escaped {
-            looking_for_command = false;
-        } else if looking_for_command {
+        else if cur_char == 'n' && !is_escaped {
+            if looking_for == 0 {
+                looking_for = 1;
+            } else if looking_for == 1 {
+                looking_for = 2;
+            }
+        } else if looking_for == 0 {
             //     // print!("added to def: {}\n", cur_char);
             // if we're looking for a command, add to command
             cmd.push(cur_char);
+        } else if looking_for == 1 {
+            // now looking for default
+            default.push(cur_char);
         } else {
             //     // print!("added to cmd {}\n", cur_char);
             // otherwise, just add to general definition
@@ -367,84 +435,13 @@ fn find_def(defs: String, searchfor: String) -> (String, String) {
 
         def_idx += 1;
     }
-    return (cmd, def);
+    return (cmd, default, def);
 }
-
-/* fn do_bytecode_old(
-    contents: &mut Vec<(char, u8, usize, usize)>,
-    parens: &mut Vec<(usize, usize, usize, bool)>,
-    defs: String,
-) {
-    let mut cur_cmd = String::from("");
-    let mut last_type = OPEN_PAREN;
-    let mut i = 0;
-
-    // for (i, (c, token_type, depth, delta)) in contents.iter().enumerate() {
-    loop {
-        let (c, token_type, depth, delta) = contents[i];
-        // print!("contents: {:?}\tc: {}\n", contents[i], c);
-
-        // default to comment
-        let mut def = "cnxq".to_string();
-        if token_type == COMMAND {
-            // check if it's a command. If it is, create the command string.
-            // In the bootsrapped version, this may be doing something else, maybe
-            // adding them?!?
-            cur_cmd.push(c);
-        } else if token_type == DELIMINATOR && last_type == COMMAND {
-            // end of command, need to execute now!
-            print!("cur cmd: {}\n", cur_cmd);
-
-            // TODO: make it evaluate the command based on definitions
-            let mut is_name = true;
-            let mut cur = String::from("");
-            let mut defsidx = 0;
-            let mut is_escaped = false;
-            for (i, cur_char) in defs.chars().enumerate() {
-                // if it's not a name definition, skip until it isn't
-                // escape character will prevent evaluation
-                if !is_escaped && cur_char == 'q' {
-                    // q to terminate a name
-                    defsidx = i;
-                    cur = String::from("");
-                    is_name = true;
-                } else if !is_escaped && cur_char == '\\' {
-                    // escape sequences
-                    is_escaped = true;
-                } else if !is_escaped && is_name && cur_char == 'n' {
-                    // next char is an n, meaning end of the char sequence
-                    // check if the name is correct, and then continue
-                    // print!("cur: {}\n", cur);
-                    if cur == cur_cmd {
-                        break;
-                    }
-                    is_name = false;
-                } else {
-                    cur.push(cur_char);
-                    print!("cur: \"{}\"\n", cur_char);
-                }
-            }
-
-            //clear the command for the next chars
-            cur_cmd = String::from("");
-        } else if token_type != COMMAND && last_type == OPEN_PAREN {
-            def = "npeq".to_string();
-            //command that will by default evaluate all parameters
-        }
-        print!("found def! \"{}\"\n", def);
-        last_type = token_type;
-
-        i += 1;
-        if i >= contents.len() {
-            break;
-        }
-    }
-} */
 
 fn read_file(
     contents: &mut Vec<(char, u8, usize, usize)>,
     parens: &mut Vec<(usize, usize, usize, bool)>,
-    commands: &mut Vec<(String, String)>,
+    commands: &mut Vec<(String, String, String)>,
     defs: &mut String,
 ) -> std::io::Result<()> {
     // contents: char, type, depth, delta
