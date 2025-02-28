@@ -67,7 +67,9 @@ fn load_defs(defs: &mut String) {
     // temp test thing to print a string
     // I don't know why this needs the extra escape characters,
     // even though the rest are fine. Maybe look into it??
-    defs.push_str("bcnxnsthis\\\\ is\\ a\\ test\\ output q");
+    // defs.push_str("tmpwritenxnsthis\\\\ is\\ a\\ test\\ output q");
+    // temp thing to test pushing and writing strings
+    defs.push_str("bcnxnpwq");
     print!("defs: {}", defs);
 }
 
@@ -86,7 +88,8 @@ fn do_bytecode(
     let EVALUATING = 3;
     let STRING_WRITING = 4;
     // this is the state at a given param
-    let mut state = Vec::new();
+    // (definition_idx, cur_idx, cmd_loc, start, end, mode, is_escaped)
+    let mut state: Vec<(usize, usize, usize, usize, usize, u8, bool)> = Vec::new();
     // state holds the state like this:
     // each depth has its own value in the following format:
     // (definition_idx, cur_idx, cmd_loc, start, end, mode, is_escaped)
@@ -97,6 +100,7 @@ fn do_bytecode(
     let mut mode = SEARCHING_CMD;
     let mut cur_state = 0;
     let mut output = String::from("");
+    let mut new_mode = SEARCHING_CMD;
     // this should work as each item in the loop does one thing. There shouldn't be
     // too many nested layers.
     // The exception is writing a string, where it just repeatedly writes the string
@@ -106,15 +110,18 @@ fn do_bytecode(
     // next cmd
     // find location of command
     state.push((
-        0,
-        0,
-        parens[0].2,
-        parens[0].0,
-        parens[0].1,
-        SEARCHING_CMD,
-        false,
+        0,             // index within definition of the current command
+        0,             // index within the actual code being iterated on
+        parens[0].2,   // location of command in command array
+        parens[0].0,   // start index of the current parameter
+        parens[0].1,   // index of final char of current param
+        SEARCHING_CMD, // the current mode of the full state
+        false,         // whether or not the current char is escaped
+                       // SEARCHING_CMD // the new mode the next state will be
     ));
     loop {
+        let state_len = state.len();
+        state[cur_state].5 = new_mode;
         // global_idx is to find the current mode and all that
         if global_idx >= contents.len() {
             break;
@@ -152,9 +159,17 @@ fn do_bytecode(
         // now to evaluate the modes
         if *dmode == SEARCHING_CMD {
             // looking for next command, so increment idx until it's a command
+            let (cmd, default, def) = &commands[cmd_loc];
+            let next_cmd = def.chars().nth(*def_idx).unwrap();
             let (c, token_type, depth, delta) = contents[*cur_idx];
             if token_type == COMMAND {
-                // this is a command, break and continue to evaluation
+                // change the state to the new command
+                cur_state = depth + delta - 1;
+                if cur_state >= state_len {
+                    print!("cur state is {}, state len is {}", cur_state, state_len);
+                    state.push((0, *cur_idx, cmd_loc, start, end, SEARCHING_CMD, false))
+                }
+                //this is a command, break and continue to evaluation
                 *dmode = EVALUATING;
                 continue;
             }
@@ -166,6 +181,7 @@ fn do_bytecode(
             //this is the switchboard to find what to do next based on the command
             let (c, token_type, depth, delta) = contents[*cur_idx];
             let (cmd, default, def) = &commands[cmd_loc];
+            let next_cmd = def.chars().nth(*def_idx).unwrap();
             print!(
                 "c: {}\tcmd: {}\tidx: {}\tlen: {}\tdefault: \"{}\"\tdef: \"{}\"\n",
                 c,
@@ -176,8 +192,6 @@ fn do_bytecode(
                 def,
             );
 
-            let next_cmd = def.chars().nth(*def_idx).unwrap();
-            print!("next cmd: {}\n", next_cmd);
             if next_cmd == 'x' {
                 // no-op, do nothing
                 *def_idx += 1;
@@ -240,6 +254,122 @@ fn do_bytecode(
                 output.push(cur_char);
                 *def_idx += 1;
             }
+        } else if *dmode == SEARCHING_PARAM {
+            print!("Searching param\n");
+            let (cmd, default, def) = &commands[cmd_loc];
+            let next_cmd = def.chars().nth(*def_idx).unwrap();
+            let (c, token_type, depth, delta) = contents[*cur_idx];
+            let (param_start, param_end, cmd_loc, _) = parens[depth + delta - 1];
+            if token_type != OPEN_PAREN && token_type != SOLO_PARAM {
+                // haven't found param, keep looking
+                *cur_idx += 1;
+                continue;
+            }
+
+            // have found param, execute the next token
+            let cur_char = def.chars().nth(*def_idx).unwrap();
+            print!("found param: {:?}\n", contents[*cur_idx]);
+            if cur_char == 'p' {
+                command_stack.push((param_start, param_end));
+                *def_idx += 1;
+                *dmode = EVALUATING;
+                print!("next cmd: {}\n", next_cmd);
+                continue;
+            } else if cur_char == 'e' {
+                // mode = EVALUATING;
+                cur_state = depth + delta - 1;
+                if cur_state >= state_len {
+                    print!("cur_state {}\tstate len: {}", cur_state, state_len);
+                    state.push((0, *cur_idx, cmd_loc, param_start, param_end, WRITING, false));
+
+                    let (c, token_type, depth, delta) = contents[*cur_idx];
+                }
+                new_mode = WRITING; // set the state to be WRITING
+                *dmode = SEARCHING_CMD;
+            } else if cur_char == 'w' {
+                // move to next state to write
+                cur_state = depth + delta - 1;
+                if cur_state >= state_len {
+                    print!("cur_state {}\tstate len: {}", cur_state, state_len);
+                    state.push((0, *cur_idx, cmd_loc, param_start, param_end, WRITING, false))
+                }
+                state[cur_state].5 = WRITING; // set the state to be WRITING
+                *dmode = WRITING; // make it write the parameter verbatim
+                print!("======\n\nidx: {}\tchar: {}\n", *cur_idx, c);
+                continue;
+            }
+        } else if *dmode == WRITING {
+            // ref mut def_idx,
+            // ref mut cur_idx,
+            // cmd_loc,
+            // start,
+            // end,
+            // ref mut dmode,
+            // ref mut is_escaped,
+            print!("c, type, depth, delta:\t{:?}\n", contents[*cur_idx]);
+            if *cur_idx >= end {
+                print!("ending, ({}\t{})\tidx: {}", start, end, cur_idx);
+                *dmode = EVALUATING;
+                *def_idx += 1;
+                // depth and delta of next character (should be previous state)
+                let (_, _, depth_next, delta_next) = contents[*cur_idx + 1];
+                continue;
+            }
+            /* if *cur_idx == start || *cur_idx == end {
+                print!("start, end: ({}\t{}) idx: {}\n", start, end, *cur_idx);
+                // at beginning or end, time to test
+                let (param_start, param_end, _, _) = parens[depth + delta - 1];
+                print!(
+                    "at edge, char: {}\tidx: {}\ttoken_type: {}\n",
+                    c, *cur_idx, token_type
+                );
+                if token_type == CLOSE_PAREN {
+                    print!("ending...\n");
+                    *dmode = EVALUATING;
+                    *def_idx += 1;
+                    *cur_idx = param_start;
+                    continue;
+                }
+            } */
+            // let (c, token_type, depth, delta) = contents[*cur_idx];
+            output.push(contents[*cur_idx].0);
+            *cur_idx += 1;
+        } else if false && *dmode == WRITING {
+            // this is for writing the parameter verbatim
+            let (cmd, default, def) = &commands[cmd_loc];
+            let (c, token_type, depth, delta) = contents[*cur_idx];
+            let (start_char, end_char, cmd_loc, _) = parens[depth + delta - 1];
+            if *cur_idx >= end {
+                // end of param, move back and repeat
+                // if it's not a paren, then print it as well
+                if token_type != CLOSE_PAREN {
+                    output.push(c);
+                }
+                print!("output: \n{}\n", output);
+                print!(
+                    "end of param, end: {}\tc: {}\ttoken_type: {}\n",
+                    end, c, token_type
+                );
+                // get previous character (entry of param), and
+                // go to beginning of param
+                let (c_prev, token_type_prev, depth_prev, delta_prev) = contents[*cur_idx - 1];
+                let (start_prev, end_prev, _, _) = parens[depth_prev + delta_prev - 1];
+                print!("start, end: ({}\t{})\n", start_prev, end_prev);
+                *cur_idx = start_prev;
+                *dmode = EVALUATING;
+                continue;
+                // assert!(c == '1');
+            } else if *cur_idx == start && c == '(' {
+                // if it's an open paren, continue so that it doesn't worry
+                // about the beginnings of parenthesized params
+                *cur_idx += 1;
+                continue;
+                print!(" at start! char = {}\n", c);
+            }
+            output.push(c);
+            *cur_idx += 1;
+            // break for now
+            // assert!(c == '1');
         }
     }
     return output;
