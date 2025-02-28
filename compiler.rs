@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -8,6 +9,66 @@ const DELIMINATOR: u8 = 2;
 const OPEN_PAREN: u8 = 3;
 const CLOSE_PAREN: u8 = 4;
 const DEBUG: bool = true;
+
+#[derive(Debug, Clone)]
+struct State {
+    pub def_idx: usize,
+    pub cur_idx: usize,
+    pub cmd_loc: usize,
+    pub start: usize,
+    pub end: usize,
+    pub dmode: u8,
+    pub is_escaped: bool,
+}
+
+impl State {
+    pub fn set_def_idx(&mut self, new_idx: usize) {
+        self.def_idx = new_idx;
+    }
+    pub fn set_cur_idx(&mut self, new_idx: usize) {
+        self.cur_idx = new_idx;
+    }
+    pub fn set_cmd_loc(&mut self, new_loc: usize) {
+        self.cmd_loc = new_loc;
+    }
+    pub fn set_start(&mut self, new_start: usize) {
+        self.start = new_start;
+    }
+    pub fn set_end(&mut self, new_end: usize) {
+        self.end = new_end;
+    }
+    pub fn set_dmode(&mut self, new_dmode: u8) {
+        self.dmode = new_dmode;
+    }
+    pub fn set_is_escaped(&mut self, is_escaped: bool) {
+        self.is_escaped = is_escaped;
+    }
+    pub fn increment_def_idx(&mut self) {
+        self.def_idx += 1;
+    }
+    pub fn increment_cur_idx(&mut self) {
+        self.cur_idx += 1;
+    }
+    pub fn increment_cmd_loc(&mut self) {
+        self.cmd_loc += 1;
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StateHolder {
+    states: Vec<State>,
+}
+impl StateHolder {
+    pub fn push(&mut self, new_state: State) {
+        self.states.push(new_state);
+    }
+    pub fn get_state(&mut self, idx: usize) -> &mut State {
+        return &mut self.states[idx];
+    }
+    pub fn len(&self) -> usize {
+        return self.states.len();
+    }
+}
 
 fn main() -> std::io::Result<()> {
     let mut defs = String::from("");
@@ -89,7 +150,9 @@ fn do_bytecode(
     let STRING_WRITING = 4;
     // this is the state at a given param
     // (definition_idx, cur_idx, cmd_loc, start, end, mode, is_escaped)
-    let mut state: Vec<(usize, usize, usize, usize, usize, u8, bool)> = Vec::new();
+    // let mut state: Vec<(usize, usize, usize, usize, usize, u8, bool)> = Vec::new();
+    let mut states: StateHolder = StateHolder { states: Vec::new() };
+    let mut to_push: Option<State> = None;
     // state holds the state like this:
     // each depth has its own value in the following format:
     // (definition_idx, cur_idx, cmd_loc, start, end, mode, is_escaped)
@@ -98,7 +161,7 @@ fn do_bytecode(
     let mut is_escaped = false;
     let mut command_stack: Vec<(usize, usize)> = Vec::new();
     let mut mode = SEARCHING_CMD;
-    let mut cur_state = 0;
+    let mut cur_state_idx = 0;
     let mut output = String::from("");
     let mut new_mode = SEARCHING_CMD;
     // this should work as each item in the loop does one thing. There shouldn't be
@@ -109,47 +172,44 @@ fn do_bytecode(
     // so write might write the current char, and search cmd might just move to the
     // next cmd
     // find location of command
-    state.push((
-        0,             // index within definition of the current command
-        0,             // index within the actual code being iterated on
-        parens[0].2,   // location of command in command array
-        parens[0].0,   // start index of the current parameter
-        parens[0].1,   // index of final char of current param
-        SEARCHING_CMD, // the current mode of the full state
-        false,         // whether or not the current char is escaped
-                       // SEARCHING_CMD // the new mode the next state will be
-    ));
+    states.push(State {
+        def_idx: 0,           // index within definition of the current command
+        cur_idx: 0,           // index within the actual code being iterated on
+        cmd_loc: parens[0].2, // location of command in command array
+        start: parens[0].0,   // start index of the current parameter
+        end: parens[0].1,     // index of final char of current param
+        dmode: SEARCHING_CMD, // the current mode of the full state
+        is_escaped: false,    // whether or not the current char is escaped
+    });
     loop {
-        let state_len = state.len();
-        state[cur_state].5 = new_mode;
+        match to_push {
+            Some(ref state) => {
+                states.push(state.clone());
+                to_push = None;
+                continue;
+            }
+            None => {}
+        }
+        let states_len = states.len();
         // global_idx is to find the current mode and all that
         if global_idx >= contents.len() {
             break;
         }
-        let (
-            ref mut def_idx,
-            ref mut cur_idx,
-            cmd_loc,
-            start,
-            end,
-            ref mut dmode,
-            ref mut is_escaped,
-        ) = state[cur_state];
+        let mut cur_state = states.get_state(cur_state_idx);
         // if you reach the end of the param, re-evaluate with previous param
-        if *cur_idx > end {
+        if cur_state.cur_idx > cur_state.end {
             // finished the param, go back to prev
-            let (c_new, token_type_new, depth_new, delta_new) = contents[*cur_idx];
+            let (c_new, token_type_new, depth_new, delta_new) = contents[cur_state.cur_idx];
             let (start_new, end_new, cmd_loc_new, _) = parens[depth_new + delta_new - 1];
-            cur_state = depth_new + delta_new - 1;
+            cur_state_idx = depth_new + delta_new - 1;
 
             print!(
-                "new state!, max_len: {}\tcur_state: {}\t{:?}\n",
+                "new state!, max_len: {}\tcur_state_idx: {}\n",
                 contents.len(),
-                cur_state,
-                state[cur_state]
+                cur_state_idx,
             );
             // if it's the base case, break
-            if cur_state == 0 {
+            if cur_state_idx == 0 {
                 break;
             }
             // found new state, now start re-evaluating
@@ -157,36 +217,48 @@ fn do_bytecode(
         }
 
         // now to evaluate the modes
-        if *dmode == SEARCHING_CMD {
+        if cur_state.dmode == SEARCHING_CMD {
             // looking for next command, so increment idx until it's a command
-            let (cmd, default, def) = &commands[cmd_loc];
-            let next_cmd = def.chars().nth(*def_idx).unwrap();
-            let (c, token_type, depth, delta) = contents[*cur_idx];
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let next_cmd = def.chars().nth(cur_state.def_idx).unwrap();
+            let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
             if token_type == COMMAND {
                 // change the state to the new command
-                cur_state = depth + delta - 1;
-                if cur_state >= state_len {
-                    print!("cur state is {}, state len is {}", cur_state, state_len);
-                    state.push((0, *cur_idx, cmd_loc, start, end, SEARCHING_CMD, false))
+                cur_state_idx = depth + delta - 1;
+                if cur_state_idx >= states_len {
+                    print!(
+                        "cur state is {}, state len is {}",
+                        cur_state_idx, states_len
+                    );
+
+                    to_push = Some(State {
+                        def_idx: 0,
+                        cur_idx: cur_state.cur_idx,
+                        cmd_loc: cur_state.cmd_loc,
+                        start: cur_state.start,
+                        end: cur_state.end,
+                        dmode: SEARCHING_CMD,
+                        is_escaped: false,
+                    });
                 }
                 //this is a command, break and continue to evaluation
-                *dmode = EVALUATING;
+                cur_state.dmode = EVALUATING;
                 continue;
             }
             // no command found
             // continue searching
-            *cur_idx += 1;
+            cur_state.increment_cur_idx();
             continue;
-        } else if *dmode == EVALUATING {
+        } else if cur_state.dmode == EVALUATING {
             //this is the switchboard to find what to do next based on the command
-            let (c, token_type, depth, delta) = contents[*cur_idx];
-            let (cmd, default, def) = &commands[cmd_loc];
-            let next_cmd = def.chars().nth(*def_idx).unwrap();
+            let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let next_cmd = def.chars().nth(cur_state.def_idx).unwrap();
             print!(
                 "c: {}\tcmd: {}\tidx: {}\tlen: {}\tdefault: \"{}\"\tdef: \"{}\"\n",
                 c,
                 cmd,
-                *def_idx,
+                cur_state.def_idx,
                 def.len(),
                 default,
                 def,
@@ -194,152 +266,182 @@ fn do_bytecode(
 
             if next_cmd == 'x' {
                 // no-op, do nothing
-                *def_idx += 1;
+                cur_state.increment_def_idx();
                 continue;
             } else if next_cmd == 's' {
                 print!("String command!\n");
                 // command is to write a string
-                *dmode = STRING_WRITING;
-                *def_idx += 1;
+                cur_state.dmode = STRING_WRITING;
+                cur_state.increment_def_idx();
                 continue;
                 default = &String::from("");
             } else if next_cmd == 'p' {
                 // push value to stack
-                *dmode = SEARCHING_PARAM;
+                cur_state.dmode = SEARCHING_PARAM;
                 continue;
             } else if next_cmd == 'e' {
-                *dmode = SEARCHING_PARAM;
+                cur_state.dmode = SEARCHING_PARAM;
                 continue;
             } else if next_cmd == 'w' {
-                *dmode = SEARCHING_PARAM;
+                cur_state.dmode = SEARCHING_PARAM;
                 continue;
             } else if next_cmd == 'q' {
                 // end of command, going to next command
-                *dmode = SEARCHING_CMD;
-                *cur_idx = end;
+                cur_state.dmode = SEARCHING_CMD;
+                cur_state.cur_idx = cur_state.end;
             } else {
                 // this probably shouldn't be hit, so just panic
                 assert!(next_cmd == '2');
             }
-        } else if *dmode == STRING_WRITING {
-            let (cmd, default, def) = &commands[cmd_loc];
-            let cur_char = def.chars().nth(*def_idx).unwrap();
+        } else if cur_state.dmode == STRING_WRITING {
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let cur_char = def.chars().nth(cur_state.def_idx).unwrap();
             print!("writing string. cur_char: {}\n", cur_char);
-            if !(*is_escaped) && cur_char == '\\' {
-                *is_escaped = true;
-                *def_idx += 1;
+            if !(cur_state.is_escaped) && cur_char == '\\' {
+                cur_state.is_escaped = true;
+                cur_state.increment_def_idx();
                 continue;
-            } else if !(*is_escaped) && cur_char == ' ' {
+            } else if !(cur_state.is_escaped) && cur_char == ' ' {
                 // end of string to write
-                *dmode = EVALUATING;
-                *def_idx += 1;
+                cur_state.dmode = EVALUATING;
+                cur_state.increment_def_idx();
                 continue;
-            } else if !(*is_escaped) && cur_char == 'q' {
+            } else if !(cur_state.is_escaped) && cur_char == 'q' {
                 // end of definition, refer to EVALUATING mode to deal with that
-                *dmode = EVALUATING;
+                cur_state.dmode = EVALUATING;
                 continue;
-            } else if *is_escaped && cur_char == 'n' {
+            } else if cur_state.is_escaped && cur_char == 'n' {
                 // \n character, return newline
                 output.push('\n');
-                *def_idx += 1;
+                cur_state.increment_def_idx();
                 continue;
-            } else if *is_escaped && cur_char == 't' {
+            } else if cur_state.is_escaped && cur_char == 't' {
                 // \t character, return tab
                 output.push('\t');
-                *def_idx += 1;
+                cur_state.increment_def_idx();
                 continue;
             } else {
                 // reset being escaped
-                *is_escaped = false;
+                cur_state.is_escaped = false;
                 output.push(cur_char);
-                *def_idx += 1;
+                cur_state.increment_def_idx();
             }
-        } else if *dmode == SEARCHING_PARAM {
+        } else if cur_state.dmode == SEARCHING_PARAM {
             print!("Searching param\n");
-            let (cmd, default, def) = &commands[cmd_loc];
-            let next_cmd = def.chars().nth(*def_idx).unwrap();
-            let (c, token_type, depth, delta) = contents[*cur_idx];
-            let (param_start, param_end, cmd_loc, _) = parens[depth + delta - 1];
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let next_cmd = def.chars().nth(cur_state.def_idx).unwrap();
+            let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
+            let (param_start, param_end, _, _) = parens[depth + delta - 1];
             if token_type != OPEN_PAREN && token_type != SOLO_PARAM {
                 // haven't found param, keep looking
-                *cur_idx += 1;
+                cur_state.increment_cur_idx();
                 continue;
             }
 
             // have found param, execute the next token
-            let cur_char = def.chars().nth(*def_idx).unwrap();
-            print!("found param: {:?}\n", contents[*cur_idx]);
+            let cur_char = def.chars().nth(cur_state.def_idx).unwrap();
+            print!("found param: {:?}\n", contents[cur_state.cur_idx]);
             if cur_char == 'p' {
                 command_stack.push((param_start, param_end));
-                *def_idx += 1;
-                *dmode = EVALUATING;
+                cur_state.increment_def_idx();
+                cur_state.dmode = EVALUATING;
                 print!("next cmd: {}\n", next_cmd);
                 continue;
             } else if cur_char == 'e' {
                 // mode = EVALUATING;
-                cur_state = depth + delta - 1;
-                if cur_state >= state_len {
-                    print!("cur_state {}\tstate len: {}", cur_state, state_len);
-                    state.push((0, *cur_idx, cmd_loc, param_start, param_end, WRITING, false));
+                cur_state_idx = depth + delta - 1;
+                if cur_state_idx >= states_len {
+                    print!("cur_state_idx {}\tstate len: {}", cur_state_idx, states_len);
 
-                    let (c, token_type, depth, delta) = contents[*cur_idx];
+                    to_push = Some(State {
+                        def_idx: 0,
+                        cur_idx: cur_state.cur_idx,
+                        cmd_loc: cur_state.cmd_loc,
+                        start: param_start,
+                        end: param_end,
+                        dmode: WRITING,
+                        is_escaped: false,
+                    });
+
+                    let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
                 }
                 new_mode = WRITING; // set the state to be WRITING
-                *dmode = SEARCHING_CMD;
+                cur_state.dmode = SEARCHING_CMD;
             } else if cur_char == 'w' {
                 // move to next state to write
-                cur_state = depth + delta - 1;
-                if cur_state >= state_len {
-                    print!("cur_state {}\tstate len: {}", cur_state, state_len);
-                    state.push((0, *cur_idx, cmd_loc, param_start, param_end, WRITING, false))
+                cur_state_idx = depth + delta - 1;
+                if cur_state_idx >= states_len {
+                    print!("cur_state_idx {}\tstate len: {}", cur_state_idx, states_len);
+
+                    to_push = Some(State {
+                        def_idx: 0,
+                        cur_idx: cur_state.cur_idx,
+                        cmd_loc: cur_state.cmd_loc,
+                        start: param_start,
+                        end: param_end,
+                        dmode: WRITING,
+                        is_escaped: false,
+                    });
+                } else {
+                    cur_state = states.get_state(cur_state_idx);
                 }
-                state[cur_state].5 = WRITING; // set the state to be WRITING
-                *dmode = WRITING; // make it write the parameter verbatim
-                print!("======\n\nidx: {}\tchar: {}\n", *cur_idx, c);
+                cur_state.set_dmode(WRITING);
+                // state[cur_state_idx].5 = WRITING; // set the state to be WRITING
+                // cur_state.set_dmode(WRITING) // make it write the parameter verbatim
+                print!(
+                    "======\n\nidx: {}\tchar: {}\tdmode: {}\n",
+                    cur_state.cur_idx, c, cur_state.dmode
+                );
                 continue;
             }
-        } else if *dmode == WRITING {
-            // ref mut def_idx,
+        } else if cur_state.dmode == WRITING {
+            // ref mutcur_state.def_idx,
             // ref mut cur_idx,
-            // cmd_loc,
+            // cur_state.cmd_loc,
             // start,
             // end,
             // ref mut dmode,
-            // ref mut is_escaped,
-            print!("c, type, depth, delta:\t{:?}\n", contents[*cur_idx]);
-            if *cur_idx >= end {
-                print!("ending, ({}\t{})\tidx: {}", start, end, cur_idx);
-                *dmode = EVALUATING;
-                *def_idx += 1;
+            // ref mutcur_state.is_escaped,
+            print!(
+                "c, type, depth, delta:\t{:?}\n",
+                contents[cur_state.cur_idx]
+            );
+            if cur_state.cur_idx >= cur_state.end {
+                print!(
+                    "ending, ({}\t{})\tidx: {}",
+                    cur_state.start, cur_state.end, cur_state.cur_idx
+                );
+                cur_state.dmode = EVALUATING;
+                cur_state.increment_def_idx();
                 // depth and delta of next character (should be previous state)
-                let (_, _, depth_next, delta_next) = contents[*cur_idx + 1];
+                let (_, _, depth_next, delta_next) = contents[cur_state.cur_idx + 1];
                 continue;
             }
-            /* if *cur_idx == start || *cur_idx == end {
-                print!("start, end: ({}\t{}) idx: {}\n", start, end, *cur_idx);
+            /* if cur_state.cur_idx == start || cur_state.cur_idx == end {
+                print!("start, end: ({}\t{}) idx: {}\n", cur_state.start, cur_state.end, cur_state.cur_idx);
                 // at beginning or end, time to test
                 let (param_start, param_end, _, _) = parens[depth + delta - 1];
                 print!(
                     "at edge, char: {}\tidx: {}\ttoken_type: {}\n",
-                    c, *cur_idx, token_type
+                    c, cur_state.cur_idx, token_type
                 );
                 if token_type == CLOSE_PAREN {
-                    print!("ending...\n");
-                    *dmode = EVALUATING;
-                    *def_idx += 1;
-                    *cur_idx = param_start;
+                    print!("cur_state.ending...\n");
+                    cur_state.dmode = EVALUATING;
+                    cur_state.def_idx += 1;
+                    cur_state.cur_idx = param_start;
                     continue;
                 }
             } */
-            // let (c, token_type, depth, delta) = contents[*cur_idx];
-            output.push(contents[*cur_idx].0);
-            *cur_idx += 1;
-        } else if false && *dmode == WRITING {
+            // let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
+            output.push(contents[cur_state.cur_idx].0);
+            cur_state.increment_cur_idx();
+        } else if false && cur_state.dmode == WRITING {
             // this is for writing the parameter verbatim
-            let (cmd, default, def) = &commands[cmd_loc];
-            let (c, token_type, depth, delta) = contents[*cur_idx];
-            let (start_char, end_char, cmd_loc, _) = parens[depth + delta - 1];
-            if *cur_idx >= end {
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
+            let (start_char, end_char, _, _) = parens[depth + delta - 1];
+            if cur_state.cur_idx >= cur_state.end {
                 // end of param, move back and repeat
                 // if it's not a paren, then print it as well
                 if token_type != CLOSE_PAREN {
@@ -347,27 +449,28 @@ fn do_bytecode(
                 }
                 print!("output: \n{}\n", output);
                 print!(
-                    "end of param, end: {}\tc: {}\ttoken_type: {}\n",
-                    end, c, token_type
+                    "end of param, cur_state.end: {}\tc: {}\ttoken_type: {}\n",
+                    cur_state.end, c, token_type
                 );
                 // get previous character (entry of param), and
                 // go to beginning of param
-                let (c_prev, token_type_prev, depth_prev, delta_prev) = contents[*cur_idx - 1];
+                let (c_prev, token_type_prev, depth_prev, delta_prev) =
+                    contents[cur_state.cur_idx - 1];
                 let (start_prev, end_prev, _, _) = parens[depth_prev + delta_prev - 1];
-                print!("start, end: ({}\t{})\n", start_prev, end_prev);
-                *cur_idx = start_prev;
-                *dmode = EVALUATING;
+                print!("start, cur_state.end: ({}\t{})\n", start_prev, end_prev);
+                cur_state.cur_idx = start_prev;
+                cur_state.dmode = EVALUATING;
                 continue;
                 // assert!(c == '1');
-            } else if *cur_idx == start && c == '(' {
+            } else if cur_state.cur_idx == cur_state.start && c == '(' {
                 // if it's an open paren, continue so that it doesn't worry
                 // about the beginnings of parenthesized params
-                *cur_idx += 1;
+                cur_state.increment_cur_idx();
                 continue;
                 print!(" at start! char = {}\n", c);
             }
             output.push(c);
-            *cur_idx += 1;
+            cur_state.increment_cur_idx();
             // break for now
             // assert!(c == '1');
         }
