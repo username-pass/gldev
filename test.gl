@@ -1,11 +1,3 @@
 (
-(N 3)
-(bc (
-))
-(
-	(bc this is a test)
-	(bc (
-))
-	(bc (only this one should have more stuff))
-)
+(test (3) (4))
 )
