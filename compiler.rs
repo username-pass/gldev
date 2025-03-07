@@ -100,8 +100,8 @@ impl State {
         self.cur_idx = self.start;
     }
     // TODO: make it smarter and store internally(?)
-    pub fn next_def_cmd(&mut self, def_item: Command) -> char {
-        return def_item.def.chars().nth(self.def_idx).unwrap();
+    pub fn next_def_cmd(&mut self, def_item: Command) -> CmdDefItem {
+        return def_item.def[self.def_idx].clone();
     }
 }
 
@@ -149,17 +149,44 @@ impl Paren {
 
 #[derive(PartialEq, Clone, Debug)]
 struct Command {
-    pub name: String,
-    pub default: String,
-    pub def: String,
+    pub name: Vec<CmdDefItem>,
+    pub default: Vec<CmdDefItem>,
+    pub def: Vec<CmdDefItem>,
 }
 
 impl Command {
     pub fn default() -> Command {
-        return Command::new(String::from(""), String::from(""), String::from(""));
+        return Command::new(Vec::new(), Vec::new(), Vec::new());
     }
-    pub fn new(name: String, default: String, def: String) -> Command {
+    pub fn new(name: Vec<CmdDefItem>, default: Vec<CmdDefItem>, def: Vec<CmdDefItem>) -> Command {
         return Command { name, default, def };
+    }
+    pub fn get_cmd(input: String) -> Vec<CmdDefItem> {
+        let mut output = Vec::new();
+        for cur_char in input.chars() {
+            if cur_char == 'p' {
+                output.push(CmdDefItem::Push)
+            } else if cur_char == 'e' {
+                output.push(CmdDefItem::Eval)
+            } else if cur_char == 'w' {
+                output.push(CmdDefItem::Write)
+            } else if cur_char == 's' {
+                output.push(CmdDefItem::String)
+            } else if cur_char == 'e' {
+                output.push(CmdDefItem::End)
+            } else if cur_char == 'n' {
+                output.push(CmdDefItem::Next)
+            } else if cur_char == 'x' {
+                output.push(CmdDefItem::Noop)
+            } else if cur_char == 'q' {
+                output.push(CmdDefItem::Quit)
+            } else if cur_char == '\\' {
+                output.push(CmdDefItem::Backslash)
+            } else {
+                unimplemented!()
+            }
+        }
+        return output;
     }
 }
 
@@ -183,6 +210,19 @@ impl StateHolder {
     }
 }
 
+#[derive(PartialEq, Clone, Debug)]
+enum CmdDefItem {
+    Push,
+    Eval,
+    Write,
+    String,
+    End,
+    Next,
+    Noop,
+    Quit,
+    Backslash,
+}
+
 fn main() -> std::io::Result<()> {
     let mut defs = String::from("");
     //definitions defined as follows:
@@ -199,9 +239,9 @@ fn main() -> std::io::Result<()> {
     let mut commands = Vec::new();
     // the commands used in the code, stored in a vec so that it can be referenced later
     commands.push(Command {
-        name: String::from(""),
-        default: String::from("xpw"),
-        def: String::from("xpeq"),
+        name: Command::get_cmd(String::from("")),
+        default: Command::get_cmd(String::from("xpw")),
+        def: Command::get_cmd(String::from("xpeq")),
     });
     // push a dummy param for all empty ones. just says to eval
 
@@ -227,7 +267,7 @@ fn main() -> std::io::Result<()> {
         }
         for (i, cur_command) in commands.iter().enumerate() {
             print!(
-                "{}\t|\t{}\t{}\t{}\n",
+                "{}\t|\t{:?}\t{:?}\t{:?}\n",
                 i, cur_command.name, cur_command.default, cur_command.def
             );
         }
@@ -312,31 +352,39 @@ fn do_bytecode(
             cur_state.increment_def_idx();
             print!("cur state: {:?}\n", cur_state);
             print!(
-                "equal: {}\tcur_cmd: {}, \ndef: {:?}\n",
-                cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) == 'p',
+                "equal: {}\tcur_cmd: {:?}, \ndef: {:?}\n",
+                cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) == CmdDefItem::Push,
                 cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()),
                 commands[cur_state.cmd_loc]
             );
 
             // match cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) {
             let cur_cmd_char = cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone());
-            print!("cur_cmd_char: {}, {}\n", cur_cmd_char, cur_cmd_char == 'p');
-            print!("cur_cmd_char: {}, {}\n", cur_cmd_char, cur_cmd_char == 'p');
-            let is_p = cur_cmd_char == 'p';
+            print!(
+                "cur_cmd_char: {:?}, {}\n",
+                cur_cmd_char,
+                cur_cmd_char == CmdDefItem::Push
+            );
+            print!(
+                "cur_cmd_char: {:?}, {}\n",
+                cur_cmd_char,
+                cur_cmd_char == CmdDefItem::Push
+            );
+            let is_p = cur_cmd_char == CmdDefItem::Push;
             if is_p {
                 print!("AAAAAAAAAAAAAAA");
             }
-            if cur_cmd_char == 'x' {
+            if cur_cmd_char == CmdDefItem::Noop {
                 println!("Input is equal to a")
-            } else if cur_cmd_char == 'q' {
+            } else if cur_cmd_char == CmdDefItem::Quit {
                 unimplemented!()
-            } else if cur_cmd_char == 'n' {
+            } else if cur_cmd_char == CmdDefItem::Next {
                 print!("BBB");
                 cur_state.jump_to_end();
                 cur_state.increment_cur_idx();
                 cur_state.dmode = SEARCHING_PARAM;
                 continue;
-            } else if cur_cmd_char == 'p' {
+            } else if cur_cmd_char == CmdDefItem::Push {
                 print!(
                     "cur depth: {}\tstart depth: {}",
                     contents[cur_state.cur_idx].depth, contents[cur_state.start].depth
@@ -354,10 +402,10 @@ fn do_bytecode(
                     cur_state.dmode = SEARCHING_PARAM;
                     continue;
                 }
-            } else if cur_cmd_char == 's' {
+            } else if cur_cmd_char == CmdDefItem::String {
                 cur_state.dmode = STRING_WRITING;
                 continue;
-            } else if cur_cmd_char == 'e' {
+            } else if cur_cmd_char == CmdDefItem::Eval {
                 // pop and jump
                 print!("popping! {:?}\n", command_stack);
                 let cur_cmd = command_stack.pop().unwrap();
@@ -382,7 +430,7 @@ fn do_bytecode(
                 states.get_state(cur_state_idx).set_cur_idx(cur_cmd.start);
 
                 continue;
-            } else if cur_cmd_char == 'w' {
+            } else if cur_cmd_char == CmdDefItem::Write {
                 // pop and jump
                 let cur_cmd = command_stack.pop().unwrap();
                 cur_state_idx = contents[cur_cmd.start].depth_plus_delta();
@@ -412,7 +460,7 @@ fn do_bytecode(
             }
             // }
 
-            if cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) == 'x' {
+            if cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) == CmdDefItem::Noop {
                 continue;
             }
         } else if cur_state.dmode == WRITING {
@@ -436,13 +484,16 @@ fn do_bytecode(
     return output;
 }
 
-fn find_def(defs: String, searchfor: String) -> Command {
+fn find_def(defs: String, searchfor: Vec<CmdDefItem>) -> Command {
     // now find definition
     let mut def_idx: usize = 0; // the position in the definition vec
                                 // let mut def_start = 0; // the start of the current definition
-    let mut cmd = String::from(""); // the actual command
-    let mut default = String::from("x"); // the default parameter execution
-    let mut def = String::from("xq"); // the full definition
+    let mut cmd = Vec::new(); // the actual command
+    let mut default = Vec::new(); // the default parameter execution
+    default.push(CmdDefItem::Noop);
+    let mut def = Vec::new(); // the full definition
+    def.push(CmdDefItem::Noop);
+    def.push(CmdDefItem::Quit);
     let mut is_escaped = false;
     let mut looking_for = 0; // 0 = command, 1 = default, 2 = everything else
     loop {
@@ -463,11 +514,11 @@ fn find_def(defs: String, searchfor: String) -> Command {
         // command specific chars
         if cur_char == 'q' && !is_escaped {
             // push the last char to def, just in case
-            def.push('q');
+            def.push(CmdDefItem::Quit);
 
             print!("reached end, checking...\n");
             print!(
-                "is equal: {}\tsearch_for: {}\tcmd: {}\tdef: {}\n",
+                "is equal: {}\tsearch_for: {:?}\tcmd: {:?}\tdef: {:?}\n",
                 searchfor == cmd,
                 searchfor,
                 cmd,
@@ -487,9 +538,12 @@ fn find_def(defs: String, searchfor: String) -> Command {
             // make it look for the command
             looking_for = 0;
             // set def to blank
-            def = String::from("");
-            default = String::from("");
-            cmd = String::from("");
+            def = Vec::new();
+            def.push(CmdDefItem::Noop);
+            default = Vec::new();
+            default.push(CmdDefItem::Noop);
+            cmd = Vec::new();
+            cmd.push(CmdDefItem::Noop);
         }
         // next param
         else if cur_char == 'n' && !is_escaped {
@@ -498,19 +552,111 @@ fn find_def(defs: String, searchfor: String) -> Command {
             } else if looking_for == 1 {
                 looking_for = 2;
             } else {
-                def.push(cur_char);
+                // match cur_char {
+                if cur_char == 'p' {
+                    def.push(CmdDefItem::Push)
+                } else if cur_char == 'e' {
+                    def.push(CmdDefItem::Eval)
+                } else if cur_char == 'w' {
+                    def.push(CmdDefItem::Write)
+                } else if cur_char == 's' {
+                    def.push(CmdDefItem::String)
+                } else if cur_char == 'e' {
+                    def.push(CmdDefItem::End)
+                } else if cur_char == 'n' {
+                    def.push(CmdDefItem::Next)
+                } else if cur_char == 'x' {
+                    def.push(CmdDefItem::Noop)
+                } else if cur_char == 'q' {
+                    def.push(CmdDefItem::Quit)
+                } else if cur_char == '\\' {
+                    def.push(CmdDefItem::Backslash)
+                } else {
+                    unimplemented!()
+                }
+
+                // def.push();
             }
         } else if looking_for == 0 {
             //     // print!("added to def: {}\n", cur_char);
             // if we're looking for a command, add to command
-            cmd.push(cur_char);
+            // cmd.push(cur_char);
+            // match cur_char {
+            if cur_char == 'p' {
+                cmd.push(CmdDefItem::Push)
+            } else if cur_char == 'e' {
+                cmd.push(CmdDefItem::Eval)
+            } else if cur_char == 'w' {
+                cmd.push(CmdDefItem::Write)
+            } else if cur_char == 's' {
+                cmd.push(CmdDefItem::String)
+            } else if cur_char == 'e' {
+                cmd.push(CmdDefItem::End)
+            } else if cur_char == 'n' {
+                cmd.push(CmdDefItem::Next)
+            } else if cur_char == 'x' {
+                cmd.push(CmdDefItem::Noop)
+            } else if cur_char == 'q' {
+                cmd.push(CmdDefItem::Quit)
+            } else if cur_char == '\\' {
+                cmd.push(CmdDefItem::Backslash)
+            } else {
+                unimplemented!()
+            }
+            // }
         } else if looking_for == 1 {
             // now looking for default
-            default.push(cur_char);
+            // default.push(cur_char);
+            // match cur_char {
+            if cur_char == 'p' {
+                default.push(CmdDefItem::Push)
+            } else if cur_char == 'e' {
+                default.push(CmdDefItem::Eval)
+            } else if cur_char == 'w' {
+                default.push(CmdDefItem::Write)
+            } else if cur_char == 's' {
+                default.push(CmdDefItem::String)
+            } else if cur_char == 'e' {
+                default.push(CmdDefItem::End)
+            } else if cur_char == 'n' {
+                default.push(CmdDefItem::Next)
+            } else if cur_char == 'x' {
+                default.push(CmdDefItem::Noop)
+            } else if cur_char == 'q' {
+                default.push(CmdDefItem::Quit)
+            } else if cur_char == '\\' {
+                default.push(CmdDefItem::Backslash)
+            } else {
+                unimplemented!()
+            }
+            // }
         } else {
             //     // print!("added to cmd {}\n", cur_char);
             // otherwise, just add to general definition
-            def.push(cur_char);
+            // def.push(cur_char);
+            // match cur_char {
+            if cur_char == 'p' {
+                def.push(CmdDefItem::Push)
+            } else if cur_char == 'e' {
+                def.push(CmdDefItem::Eval)
+            } else if cur_char == 'w' {
+                def.push(CmdDefItem::Write)
+            } else if cur_char == 's' {
+                def.push(CmdDefItem::String)
+            } else if cur_char == 'e' {
+                def.push(CmdDefItem::End)
+            } else if cur_char == 'n' {
+                def.push(CmdDefItem::Next)
+            } else if cur_char == 'x' {
+                def.push(CmdDefItem::Noop)
+            } else if cur_char == 'q' {
+                def.push(CmdDefItem::Quit)
+            } else if cur_char == '\\' {
+                def.push(CmdDefItem::Backslash)
+            } else {
+                unimplemented!()
+            }
+            // }
         }
 
         // add char when not command
@@ -527,13 +673,15 @@ fn find_def(defs: String, searchfor: String) -> Command {
         (cmd.clone(), default.clone(), def.clone())
     );
     if default.clone().is_empty() {
-        default = String::from("x");
+        def = Vec::new();
+        def.push(CmdDefItem::Noop)
     }
     if def.clone().is_empty() {
-        def = String::from("xq");
+        def = Vec::new();
+        def.push(CmdDefItem::Noop);
+        def.push(CmdDefItem::Quit);
     }
-    def.insert_str(0, "x");
-    default.insert_str(0, "x");
+
     return Command::new(cmd, default, def);
 }
 
@@ -559,7 +707,7 @@ fn read_file(
     let mut token_type = OPEN_PAREN;
     let mut last_type;
     print!("code:\n{}\n", tmp);
-    let mut full_command = String::from("");
+    let mut full_command = Vec::new();
     for (i, c) in tmp.chars().enumerate() {
         last_type = token_type;
         token_type = SOLO_PARAM;
@@ -643,7 +791,7 @@ fn read_file(
                 if last_type == COMMAND {
                     if !commands.contains(&def) {
                         print!(
-                            "found new command! {}\tputting at {}\n",
+                            "found new command! {:?}\tputting at {}\n",
                             full_command,
                             commands.len()
                         );
@@ -664,10 +812,34 @@ fn read_file(
             token_type = COMMAND;
             // clear command if it's the beginning of a command
             if last_type == OPEN_PAREN {
-                full_command = String::from("");
+                full_command = Vec::new();
             }
             // push to command
-            full_command.push(c);
+            // full_command.push(c);
+            // match c {
+            if c == 'p' {
+                full_command.push(CmdDefItem::Push)
+            } else if c == 'e' {
+                full_command.push(CmdDefItem::Eval)
+            } else if c == 'w' {
+                full_command.push(CmdDefItem::Write)
+            } else if c == 's' {
+                full_command.push(CmdDefItem::String)
+            } else if c == 'e' {
+                full_command.push(CmdDefItem::End)
+            } else if c == 'n' {
+                full_command.push(CmdDefItem::Next)
+            } else if c == 'x' {
+                full_command.push(CmdDefItem::Noop)
+            } else if c == 'q' {
+                full_command.push(CmdDefItem::Quit)
+            } else if c == '\\' {
+                full_command.push(CmdDefItem::Backslash)
+            } else {
+                print!("c: {}\n", c);
+                unimplemented!()
+            }
+            // }
             // print!(
             //     "pushing to full command! {}\tfull_command: {}\n",
             //     c, full_command
