@@ -84,8 +84,14 @@ impl State {
         self.callback_idx = new_callback_idx;
         return self;
     }
+    pub fn get_cur_idx(self) -> usize {
+        return self.cur_idx;
+    }
     pub fn increment_def_idx(&mut self) {
         self.def_idx += 1;
+    }
+    pub fn decrement_def_idx(&mut self) {
+        self.def_idx -= 1;
     }
     pub fn increment_cur_idx(&mut self) {
         self.cur_idx += 1;
@@ -101,7 +107,16 @@ impl State {
     }
     // TODO: make it smarter and store internally(?)
     pub fn next_def_cmd(&mut self, def_item: Command) -> char {
-        return def_item.def.chars().nth(self.def_idx).unwrap();
+        let def_chars = def_item.clone().def;
+        println!("def_idx: {}, def:{:?}", self.def_idx, def_item);
+        if def_chars.len() > self.def_idx {
+            return def_chars.chars().nth(self.def_idx).unwrap();
+        }
+        println!("going to default cmd");
+        // if it's past the def, go to the default
+        let default_chars = def_item.clone().default;
+        let idx = (self.def_idx - def_chars.len()) % default_chars.len();
+        return default_chars.chars().nth(idx).unwrap();
     }
 }
 
@@ -123,8 +138,10 @@ impl CodeCharacter {
             delta,
         };
     }
+    // WARNING: This will be minus one to be used as a value. It may
+    // not behave as expected
     pub fn depth_plus_delta(self) -> usize {
-        return self.depth + self.delta;
+        return self.depth + self.delta - 1;
     }
 }
 
@@ -165,7 +182,7 @@ impl Command {
 
 #[derive(Debug, Clone)]
 struct StateHolder {
-    states: Vec<State>,
+    pub states: Vec<State>,
 }
 impl StateHolder {
     pub fn push_state(&mut self, new_state: State) {
@@ -178,8 +195,11 @@ impl StateHolder {
     pub fn get_state(&mut self, idx: usize) -> &mut State {
         return &mut self.states[idx];
     }
+    pub fn generic_len(state: &StateHolder) -> usize {
+        return state.clone().states.len();
+    }
     pub fn len(&self) -> usize {
-        return self.states.len();
+        return StateHolder::generic_len(self);
     }
 }
 
@@ -200,7 +220,7 @@ fn main() -> std::io::Result<()> {
     // the commands used in the code, stored in a vec so that it can be referenced later
     commands.push(Command {
         name: String::from(""),
-        default: String::from("xpw"),
+        default: String::from("xq"),
         def: String::from("xpeq"),
     });
     // push a dummy param for all empty ones. just says to eval
@@ -257,7 +277,7 @@ fn load_defs(defs: &mut String) {
     // even though the rest are fine. Maybe look into it??
     // defs.push_str("tmpwritenxnsthis\\\\ is\\ a\\ test\\ output q");
     // temp thing to test pushing and writing strings
-    defs.push_str("bcnxnpwnpwq");
+    defs.push_str("bcnpwnpwq");
     defs.push_str("testnxnsa pwnpwq");
     print!("defs: {}", defs);
 }
@@ -272,6 +292,8 @@ fn do_bytecode(
     let mut states: StateHolder = StateHolder { states: Vec::new() };
     let mut command_stack: Vec<Paren> = Vec::new();
     let mut cur_state_idx = 0;
+    let mut to_push: (Option<State>, usize) = (None, 42);
+    let mut states_len = 1;
 
     states.push_state(
         *State::new()
@@ -284,67 +306,127 @@ fn do_bytecode(
             .set_is_escaped(false)
             .set_callback_idx(0),
     );
-    // states.push(State {
-    //     def_idx: 0,                 // index within definition of the current command
-    //     cur_idx: 0,                 // index within the actual code being iterated on
-    //     cmd_loc: parens[0].cmd_loc, // location of command in command array
-    //     start: parens[0].start,     // start index of the current parameter
-    //     end: parens[0].end,         // index of final char of current param
-    //     dmode: SEARCHING_CMD,       // the current mode of the full state
-    //     is_escaped: false,          // whether or not the current char is escaped
-    //     callback_idx: 0,            // the index of the callback state when needed
-    // });
+
+    // init
+    let mut cur_idx = 0;
+    println!("starting init...");
+    loop {
+        println!("idx: {}", cur_idx);
+        if cur_idx >= contents.len() {
+            break;
+        }
+        let cur_char = contents[cur_idx].depth_plus_delta();
+        if cur_char >= states_len {
+            states.push_state(
+                *State::new()
+                    .set_def_idx(0)
+                    .set_cur_idx(cur_idx)
+                    .set_cmd_loc(parens[cur_char].cmd_loc)
+                    .set_start(parens[cur_char].start)
+                    .set_end(parens[cur_char].end)
+                    .set_dmode(SEARCHING_CMD)
+                    .set_is_escaped(false)
+                    .set_callback_idx(states_len - 1),
+            );
+            states_len += 1;
+        }
+        cur_idx += 1;
+    }
 
     // this is a rewrite based on a tree diagram I wrote
     loop {
+        print!("\n");
+        if to_push.0.is_some() {
+            states.safe_push_state(to_push.0.unwrap(), to_push.1);
+            to_push = (None, 42);
+            states_len += 1;
+            continue;
+        }
         let cur_state = states.get_state(cur_state_idx);
         if cur_state.cur_idx >= contents.len() {
             break;
         }
+        if cur_state.cur_idx > cur_state.end {
+            // if it's the end of the state, break
+            println!(
+                "callback. cur_idx: {}\tend: {}, cur_state_idx: {}, callback: {}",
+                cur_state.cur_idx, cur_state.end, cur_state_idx, cur_state.callback_idx
+            );
+            if cur_state_idx == 0 {
+                break;
+            }
+            cur_state_idx = cur_state.callback_idx;
+            continue;
+        }
         if cur_state.dmode == SEARCHING_CMD {
+            print!("searching cmd");
             cur_state.increment_cur_idx();
             if contents[cur_state.cur_idx].token_type == COMMAND {
                 cur_state.dmode = EVALUATING;
+
+                // push state if it's not there
+                let old_state_idx = cur_state_idx;
+                cur_state_idx = contents[parens[cur_state_idx].start].depth_plus_delta();
+                if states_len <= cur_state_idx {
+                    // if there isn't a state
+
+                    println!("states.len: {}, idx: {}", states_len, cur_state_idx);
+                    to_push = (
+                        Some(
+                            *State::new()
+                                .set_def_idx(0)
+                                .set_cur_idx(cur_state.cur_idx)
+                                .set_cmd_loc(parens[cur_state_idx].cmd_loc)
+                                .set_start(parens[cur_state_idx].start)
+                                .set_end(parens[cur_state_idx].end)
+                                .set_dmode(SEARCHING_CMD)
+                                .set_is_escaped(false)
+                                .set_callback_idx(old_state_idx),
+                        ),
+                        cur_state_idx,
+                    );
+                }
             }
             // go back to next state
             continue;
         } else if cur_state.dmode == EVALUATING {
             cur_state.increment_def_idx();
-            print!("cur state: {:?}\n", cur_state);
             print!(
-                "equal: {}\tcur_cmd: {}, \ndef: {:?}\n",
-                cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) == 'p',
+                "cmd: {} idx: {}\tcur state: {:?}\n",
                 cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()),
-                commands[cur_state.cmd_loc]
+                cur_state_idx,
+                cur_state,
             );
 
             // match cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) {
             let cur_cmd_char = cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone());
-            print!("cur_cmd_char: {}, {}\n", cur_cmd_char, cur_cmd_char == 'p');
-            print!("cur_cmd_char: {}, {}\n", cur_cmd_char, cur_cmd_char == 'p');
-            let is_p = cur_cmd_char == 'p';
-            if is_p {
-                print!("AAAAAAAAAAAAAAA");
-            }
             if cur_cmd_char == 'x' {
-                println!("Input is equal to a")
+                println!("Input is equal to a");
+                continue;
             } else if cur_cmd_char == 'q' {
-                unimplemented!()
+                if cur_state_idx == 0 {
+                    break;
+                }
+                cur_state_idx = cur_state.callback_idx;
+                // unimplemented!();
+                continue;
             } else if cur_cmd_char == 'n' {
-                print!("BBB");
-                cur_state.jump_to_end();
+                // cur_state.jump_to_end();
+                cur_state.set_cur_idx(parens[contents[cur_state.cur_idx].depth_plus_delta()].end);
                 cur_state.increment_cur_idx();
+                cur_state.increment_def_idx();
                 cur_state.dmode = SEARCHING_PARAM;
+
                 continue;
             } else if cur_cmd_char == 'p' {
                 print!(
-                    "cur depth: {}\tstart depth: {}",
+                    "cur depth: {}\tstart depth: {}\n",
                     contents[cur_state.cur_idx].depth, contents[cur_state.start].depth
                 );
-                if contents[cur_state.cur_idx].depth < contents[cur_state.start].depth {
+                if contents[cur_state.cur_idx].depth > contents[cur_state.start].depth {
                     // if it's inside a param or not
                     // push start and end of param
-                    print!(
+                    eprint!(
                         "pushing! {:?}\n",
                         parens[contents[cur_state.cur_idx].depth_plus_delta()]
                     );
@@ -356,27 +438,35 @@ fn do_bytecode(
                 }
             } else if cur_cmd_char == 's' {
                 cur_state.dmode = STRING_WRITING;
+                cur_state.increment_def_idx();
+                println!("String writing");
                 continue;
             } else if cur_cmd_char == 'e' {
                 // pop and jump
                 print!("popping! {:?}\n", command_stack);
                 let cur_cmd = command_stack.pop().unwrap();
+                let old_state_idx = cur_state_idx;
                 cur_state_idx = contents[cur_cmd.start].depth_plus_delta();
-                if states.len() <= cur_state_idx {
+                if states_len <= cur_state_idx {
                     // if there isn't a state
 
-                    states.safe_push_state(
-                        *State::new()
-                            .set_def_idx(0)
-                            .set_cur_idx(cur_cmd.start)
-                            .set_cmd_loc(parens[cur_state_idx].cmd_loc)
-                            .set_start(parens[cur_state_idx].start)
-                            .set_end(parens[cur_state_idx].end)
-                            .set_dmode(SEARCHING_CMD)
-                            .set_is_escaped(false)
-                            .set_callback_idx(cur_state_idx),
+                    println!("states.len: {}, idx: {}", states_len, cur_state_idx);
+                    to_push = (
+                        Some(
+                            *State::new()
+                                .set_def_idx(0)
+                                .set_cur_idx(cur_cmd.start)
+                                .set_cmd_loc(parens[cur_state_idx].cmd_loc)
+                                .set_start(parens[cur_state_idx].start)
+                                .set_end(parens[cur_state_idx].end)
+                                .set_dmode(SEARCHING_CMD)
+                                .set_is_escaped(false)
+                                .set_callback_idx(old_state_idx),
+                        ),
                         cur_state_idx,
                     );
+                    // println!("topush: {:#?}", to_push);
+                    continue;
                 }
                 // pop and jump
                 states.get_state(cur_state_idx).set_cur_idx(cur_cmd.start);
@@ -384,43 +474,46 @@ fn do_bytecode(
                 continue;
             } else if cur_cmd_char == 'w' {
                 // pop and jump
+                println!("command: {:?}", commands[cur_state.cmd_loc]);
                 let cur_cmd = command_stack.pop().unwrap();
+                let old_state_idx = cur_state_idx;
                 cur_state_idx = contents[cur_cmd.start].depth_plus_delta();
-                if states.len() <= cur_state_idx {
+                if states_len <= cur_state_idx {
                     // if there isn't a state
 
-                    states.safe_push_state(
-                        *State::new()
-                            .set_def_idx(0)
-                            .set_cur_idx(cur_cmd.start)
-                            .set_cmd_loc(parens[cur_state_idx].cmd_loc)
-                            .set_start(parens[cur_state_idx].start)
-                            .set_end(parens[cur_state_idx].end)
-                            .set_dmode(WRITING)
-                            .set_is_escaped(false)
-                            .set_callback_idx(cur_state_idx),
+                    to_push = (
+                        Some(
+                            *State::new()
+                                .set_def_idx(0)
+                                .set_cur_idx(cur_cmd.start)
+                                .set_cmd_loc(parens[cur_state_idx].cmd_loc)
+                                .set_start(parens[cur_state_idx].start)
+                                .set_end(parens[cur_state_idx].end)
+                                .set_dmode(WRITING)
+                                .set_is_escaped(false)
+                                .set_callback_idx(old_state_idx),
+                        ),
                         cur_state_idx,
                     );
+                    println!("in writing, pushing: {:#?}", to_push);
+                    continue;
                 }
                 // pop and jump
                 states.get_state(cur_state_idx).set_cur_idx(cur_cmd.start);
 
                 continue;
             } else {
-                print!("AAA");
+                print!("AAA\n");
                 unimplemented!();
             }
             // }
-
-            if cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) == 'x' {
-                continue;
-            }
         } else if cur_state.dmode == WRITING {
+            println!("Writing");
             let cur_char = contents[cur_state.cur_idx];
             if cur_state.cur_idx == cur_state.start && cur_char.token_type == OPEN_PAREN {
                 cur_state.increment_cur_idx();
                 continue;
-            } else if cur_state.cur_idx == cur_state.end {
+            } else if cur_state.cur_idx >= cur_state.end {
                 if cur_char.token_type != CLOSE_PAREN {
                     output.push(cur_char.cur_char);
                 }
@@ -431,8 +524,47 @@ fn do_bytecode(
             output.push(cur_char.cur_char);
             cur_state.increment_cur_idx();
             continue;
+        } else if cur_state.dmode == SEARCHING_PARAM {
+            print!(
+                "searching param\tcur_depth: {}, start_depth: {} \n",
+                contents[cur_state.cur_idx].depth, contents[cur_state.start].depth
+            );
+            if contents[cur_state.cur_idx].depth > contents[cur_state.start].depth {
+                // if it's in a parameter
+                // fix for the evaluating block incrementing again
+                cur_state.decrement_def_idx();
+                cur_state.dmode = EVALUATING;
+                continue;
+            } else {
+                cur_state.increment_cur_idx();
+                continue;
+            }
+        } else if cur_state.dmode == STRING_WRITING {
+            let cur_char = cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone());
+            if cur_char == ' ' && !cur_state.is_escaped {
+                cur_state.dmode = EVALUATING;
+                continue;
+            }
+            if cur_char == '\\' && !cur_state.is_escaped {
+                cur_state.is_escaped = true;
+            } else if cur_state.is_escaped {
+                match cur_char {
+                    'n' => output.push('\n'),
+                    't' => output.push('\t'),
+                    ' ' => output.push(' '),
+                    _ => output.push(cur_char),
+                }
+            } else {
+                output.push(cur_char);
+            }
+            cur_state.increment_def_idx();
+            continue;
+        } else {
+            println!("cur_state: {:#?}", cur_state);
+            unimplemented!();
         }
     }
+
     return output;
 }
 
@@ -441,7 +573,7 @@ fn find_def(defs: String, searchfor: String) -> Command {
     let mut def_idx: usize = 0; // the position in the definition vec
                                 // let mut def_start = 0; // the start of the current definition
     let mut cmd = String::from(""); // the actual command
-    let mut default = String::from("x"); // the default parameter execution
+    let mut default = String::from("q"); // the default parameter execution
     let mut def = String::from("xq"); // the full definition
     let mut is_escaped = false;
     let mut looking_for = 0; // 0 = command, 1 = default, 2 = everything else
@@ -463,20 +595,22 @@ fn find_def(defs: String, searchfor: String) -> Command {
         // command specific chars
         if cur_char == 'q' && !is_escaped {
             // push the last char to def, just in case
-            def.push('q');
-
-            print!("reached end, checking...\n");
-            print!(
-                "is equal: {}\tsearch_for: {}\tcmd: {}\tdef: {}\n",
-                searchfor == cmd,
-                searchfor,
-                cmd,
-                def
-            );
+            // def.push('q');
+            // print!("reached end, checking...\n");
+            // print!(
+            //     "is equal: {}\tsearch_for: {}\tcmd: {}\tdef: {}\n",
+            //     searchfor == cmd,
+            //     searchfor,
+            //     cmd,
+            //     def
+            // );
             // check if it's the correct definition
             if searchfor == cmd {
                 // it's the correct command, exit loop, all is well
-                //         print!("found correct def! {}\n", cmd);
+
+                def.insert_str(0, "x");
+                default.insert_str(0, "x");
+                print!("found correct def! {} {}\n", cmd, default);
                 return Command::new(cmd, default, def);
                 // break;
             }
@@ -495,10 +629,12 @@ fn find_def(defs: String, searchfor: String) -> Command {
         else if cur_char == 'n' && !is_escaped {
             if looking_for == 0 {
                 looking_for = 1;
+                default.push('n');
             } else if looking_for == 1 {
+                // default.push('n');
                 looking_for = 2;
             } else {
-                def.push(cur_char);
+                def.push('n');
             }
         } else if looking_for == 0 {
             //     // print!("added to def: {}\n", cur_char);
@@ -527,7 +663,7 @@ fn find_def(defs: String, searchfor: String) -> Command {
         (cmd.clone(), default.clone(), def.clone())
     );
     if default.clone().is_empty() {
-        default = String::from("x");
+        default = String::from("q");
     }
     if def.clone().is_empty() {
         def = String::from("xq");
