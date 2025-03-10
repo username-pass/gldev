@@ -84,9 +84,6 @@ impl State {
         self.callback_idx = new_callback_idx;
         return self;
     }
-    pub fn get_cur_idx(self) -> usize {
-        return self.cur_idx;
-    }
     pub fn increment_def_idx(&mut self) {
         self.def_idx += 1;
     }
@@ -96,15 +93,15 @@ impl State {
     pub fn increment_cur_idx(&mut self) {
         self.cur_idx += 1;
     }
-    pub fn increment_cmd_loc(&mut self) {
-        self.cmd_loc += 1;
-    }
-    pub fn jump_to_end(&mut self) {
-        self.cur_idx = self.end;
-    }
-    pub fn jump_to_start(&mut self) {
-        self.cur_idx = self.start;
-    }
+    // pub fn increment_cmd_loc(&mut self) {
+    //     self.cmd_loc += 1;
+    // }
+    // pub fn jump_to_end(&mut self) {
+    //     self.cur_idx = self.end;
+    // }
+    // pub fn jump_to_start(&mut self) {
+    //     self.cur_idx = self.start;
+    // }
     // TODO: make it smarter and store internally(?)
     pub fn next_def_cmd(&mut self, def_item: Command) -> char {
         let def_chars = def_item.clone().def;
@@ -172,9 +169,9 @@ struct Command {
 }
 
 impl Command {
-    pub fn default() -> Command {
-        return Command::new(String::from(""), String::from(""), String::from(""));
-    }
+    // pub fn default() -> Command {
+    //     return Command::new(String::from(""), String::from(""), String::from(""));
+    // }
     pub fn new(name: String, default: String, def: String) -> Command {
         return Command { name, default, def };
     }
@@ -192,14 +189,15 @@ impl StateHolder {
         assert!(self.states.len() == correct_len);
         self.states.push(new_state);
     }
+    pub fn safe_set_state(&mut self, new_state: State, correct_idx: usize) {
+        assert!(self.states.len() > correct_idx);
+        self.states[correct_idx] = new_state;
+    }
     pub fn get_state(&mut self, idx: usize) -> &mut State {
         return &mut self.states[idx];
     }
-    pub fn generic_len(state: &StateHolder) -> usize {
+    pub fn _len(state: &StateHolder) -> usize {
         return state.clone().states.len();
-    }
-    pub fn len(&self) -> usize {
-        return StateHolder::generic_len(self);
     }
 }
 
@@ -252,16 +250,16 @@ fn main() -> std::io::Result<()> {
             );
         }
     }
-    let bytecode = do_bytecode(&mut contents, &mut parens, commands, defs);
+    let bytecode = make_bytecode(&mut contents, &mut parens, commands, defs);
     print!("Got bytecode!\n===\n{}\n===\n", bytecode);
     Ok(())
 }
 
 fn load_defs(defs: &mut String) {
     //while loop definition
-    defs.push_str("wnxnppeswhile\n npeesend\n q");
+    defs.push_str(r#"wnxnppes\\nwhile\\n npees\\nend\\n q"#);
     //init command definition
-    defs.push_str("Nnxnsinit\\\\  pws\n q");
+    defs.push_str(r#"Nnxnsinit\\  pws\\n q"#);
     //comments
     defs.push_str("cnxq");
     //temp thing to just evaluate things
@@ -282,7 +280,7 @@ fn load_defs(defs: &mut String) {
     print!("defs: {}", defs);
 }
 
-fn do_bytecode(
+fn make_bytecode(
     contents: &mut Vec<CodeCharacter>,
     parens: &mut Vec<Paren>,
     commands: Vec<Command>,
@@ -292,7 +290,10 @@ fn do_bytecode(
     let mut states: StateHolder = StateHolder { states: Vec::new() };
     let mut command_stack: Vec<Paren> = Vec::new();
     let mut cur_state_idx = 0;
+    // push to the stack
     let mut to_push: (Option<State>, usize) = (None, 42);
+    // set a specified value on a stack
+    let mut to_set: (Option<State>, usize) = (None, 42);
     let mut states_len = 1;
 
     states.push_state(
@@ -340,6 +341,11 @@ fn do_bytecode(
             states.safe_push_state(to_push.0.unwrap(), to_push.1);
             to_push = (None, 42);
             states_len += 1;
+            continue;
+        }
+        if to_set.0.is_some() {
+            states.safe_set_state(to_set.0.unwrap(), to_set.1);
+            to_set = (None, 42);
             continue;
         }
         let cur_state = states.get_state(cur_state_idx);
@@ -497,13 +503,16 @@ fn do_bytecode(
                     );
                     println!("in writing, pushing: {:#?}", to_push);
                     continue;
+                } else {
+                    let mut next_state = states.get_state(cur_state_idx).clone();
+                    to_set = (Some(*next_state.set_dmode(WRITING)), cur_state_idx);
                 }
                 // pop and jump
                 states.get_state(cur_state_idx).set_cur_idx(cur_cmd.start);
 
                 continue;
             } else {
-                print!("AAA\n");
+                print!("AAA dmode: {}\n", cur_cmd_char);
                 unimplemented!();
             }
             // }
@@ -535,12 +544,19 @@ fn do_bytecode(
                 cur_state.decrement_def_idx();
                 cur_state.dmode = EVALUATING;
                 continue;
+            } else if contents[cur_state.cur_idx].depth < contents[cur_state.start].depth {
+                // out of param
+                cur_state.dmode = SEARCHING_PARAM;
             } else {
                 cur_state.increment_cur_idx();
                 continue;
             }
         } else if cur_state.dmode == STRING_WRITING {
             let cur_char = cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone());
+            println!(
+                "String writing: char: {}, is_escaped: {}",
+                cur_char, cur_state.is_escaped
+            );
             if cur_char == ' ' && !cur_state.is_escaped {
                 cur_state.dmode = EVALUATING;
                 continue;
@@ -548,12 +564,14 @@ fn do_bytecode(
             if cur_char == '\\' && !cur_state.is_escaped {
                 cur_state.is_escaped = true;
             } else if cur_state.is_escaped {
+                println!("===\nEscaped char: {}\n===", cur_char);
                 match cur_char {
                     'n' => output.push('\n'),
                     't' => output.push('\t'),
                     ' ' => output.push(' '),
                     _ => output.push(cur_char),
                 }
+                cur_state.is_escaped = false;
             } else {
                 output.push(cur_char);
             }
@@ -573,8 +591,8 @@ fn find_def(defs: String, searchfor: String) -> Command {
     let mut def_idx: usize = 0; // the position in the definition vec
                                 // let mut def_start = 0; // the start of the current definition
     let mut cmd = String::from(""); // the actual command
-    let mut default = String::from("q"); // the default parameter execution
-    let mut def = String::from("xq"); // the full definition
+    let mut default = String::from(""); // the default parameter execution
+    let mut def = String::from(""); // the full definition
     let mut is_escaped = false;
     let mut looking_for = 0; // 0 = command, 1 = default, 2 = everything else
     loop {
@@ -610,7 +628,7 @@ fn find_def(defs: String, searchfor: String) -> Command {
 
                 def.insert_str(0, "x");
                 default.insert_str(0, "x");
-                print!("found correct def! {} {}\n", cmd, default);
+                print!("found correct def! {} {}\n", cmd, def);
                 return Command::new(cmd, default, def);
                 // break;
             }

@@ -1,1 +1,1 @@
-((bc (3) (test test) 56))
+(w (bc cond) (bc code))
