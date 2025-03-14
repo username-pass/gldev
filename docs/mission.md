@@ -309,6 +309,12 @@ The basic macros for each data type. Here are the data types:
   and one (or more) cells for the mantissa
 5) boolean
  - a value that is either true or false
+6) pointer
+ - stores the i,j, and k of another variable in its cells
+ - calling returns the given variable
+ - addition and subtraction add to the pointer reference, not the actual
+  value of the variable
+
 
 
 ### Needed functions
