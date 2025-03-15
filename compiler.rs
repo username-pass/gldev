@@ -201,6 +201,36 @@ impl StateHolder {
     }
 }
 
+enum BytecodeType {
+    Macro,
+    EndMacro,
+    Init,
+    NewVar,
+    JumpToArr,
+    JumpToVar,
+    Load,
+    WorkingAdd,
+    WorkingSub,
+    WorkingSet,
+    Clear,
+    While,
+    End,
+}
+
+struct BytecodeItem {
+    pub bc_type: BytecodeType,
+    pub bc_params: Vec<i64>,
+    pub macro_replace: String, // thing to replace with
+    pub bf_code: String,       // bf compiled code
+    pub ws_code: String,       // ws compiled code
+}
+
+struct Macro {
+    pub label: String,
+    pub id: i64,
+    pub replacement: String,
+}
+
 fn main() -> std::io::Result<()> {
     let mut defs = String::from("");
     //definitions defined as follows:
@@ -251,7 +281,10 @@ fn main() -> std::io::Result<()> {
         }
     }
     let bytecode = make_bytecode(&mut contents, &mut parens, commands, defs);
-    print!("Got bytecode!\n===\n{}\n===\n", bytecode);
+    print!("Got bytecode!\n===\n{}\n===\n", bytecode.clone());
+    let _macro_replaced_bytecode = replace_macros(bytecode);
+    // let whitespace = compile_whitespace(bytecode);
+    // let brainfck = compile_brainfck(bytecode);
     Ok(())
 }
 
@@ -262,23 +295,55 @@ fn load_defs(defs: &mut String) {
     defs.push_str(r#"Nnxnsinit\\  pws\\n q"#);
     //comments
     defs.push_str("cnxq");
-    //temp thing to just evaluate things
-    defs.push_str("$npwq");
-    //temp thing to just evaluate things
-    defs.push_str("#npwq");
-    //temp thing to just evaluate things
-    defs.push_str(">npwq");
-    //temp thing to just evaluate things
-    defs.push_str("-npwq");
-    // temp test thing to print a string
-    // I don't know why this needs the extra escape characters,
-    // even though the rest are fine. Maybe look into it??
-    // defs.push_str("tmpwritenxnsthis\\\\ is\\ a\\ test\\ output q");
-    // temp thing to test pushing and writing strings
+    // addition
+    defs.push_str("+nxnpnpees\nadd q");
+    // subtraction
+    defs.push_str("-nxnpnpees\nadd q");
     defs.push_str("bcnpwnpwq");
     defs.push_str("testnxnsa pwnpwq");
     print!("defs: {}", defs);
 }
+
+fn replace_macros(bytecode: String) {
+    let new_bytecode: Vec<BytecodeItem> = Vec::new();
+    let macros: Vec<Macro> = Vec::new();
+    let NEXT_COMMAND = 0;
+    let NEXT_PARAM = 0;
+
+    let mut cur_idx = 0;
+    let in_macro = false;
+    let macro_start = 0;
+    let macro_end = 0;
+    let mut cur_cmd = String::from("");
+    let mut cur_params: Vec<String> = Vec::new();
+    cur_params.push(String::from(""));
+    let bytecode_len = bytecode.len();
+    let mut looking_for = NEXT_COMMAND;
+    loop {
+        println!("cur_idx: {}", cur_idx);
+        if cur_idx >= bytecode_len {
+            break;
+        }
+        // loop over the bytecode, and turn into
+        // vec thing
+        let cur_char = bytecode.chars().nth(cur_idx).unwrap();
+
+        if cur_char == ' ' {
+            looking_for = NEXT_PARAM;
+            cur_params.push(String::from(""));
+        } else if cur_char == '\n' {
+            looking_for = NEXT_COMMAND;
+        } else if looking_for == NEXT_COMMAND {
+            cur_cmd.push(cur_char);
+        } else {
+            cur_params.last_mut().unwrap().push(cur_char);
+        }
+        cur_idx += 1;
+    }
+}
+
+fn compile_whitespace(_bytecode: String) {}
+fn compile_brainfck(_bytecode: String) {}
 
 fn make_bytecode(
     contents: &mut Vec<CodeCharacter>,
