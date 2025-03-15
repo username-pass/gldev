@@ -27,25 +27,39 @@ Bytecode will be created in the following way:
 push: `stuff to push to bytecode stack`
 write: `stuff to write to bytecode stack`
 
+
+enum CmdDefItem {
+    push,
+    eval,
+    write,
+    string,
+    end,
+    next,
+    noop,
+    quit,
+    backslash
+}
+
 push adds to stack, write writes from stack. If you don't push anything, push a null thing, so that the stack is still correct.
 
 This file is still a massive WIP
 
 Example:
 ### (w (cond) (code))
-w ->          "wnxnppeswhile\n npeesend\n q"
-"w"         -> this is for the `w` command
-"n"         -> move to next param (default)
-"x"         -> do nothing by default to any extra params
-"n"         -> move to next param (cond)
-"p"         -> push val to stack
-"pe"        -> evaluate condition
-"swhile\n " -> writes "while\n"
-"n"         -> goes to next parameter
-"pe"        -> evaluates code
-"e"         -> pops and evaluates condition
-"send\n "   -> writes "end\n"
-"q"         -> finishes definition
+while ->       "whilenxnppeswhile\n npeesend\n q"
+"w"           -> this is for the `w` command
+"n"           -> move to next param (default)
+"x"           -> do nothing by default to any extra params
+"n"           -> move to next param (cond)
+"p"           -> push val to stack
+"pe"          -> evaluate condition
+"s\nwhile\n " -> writes "while\n"
+"n"           -> goes to next parameter
+"pe"          -> evaluates code
+"s\n "        -> adds space between code and condition
+"e"           -> pops and evaluates condition
+"s\nend\n "   -> writes "end\n"
+"q"           -> finishes definition
 ## NOTE
 
 For now, I am going to treat variables as simple, and copy all of their respective bytes
