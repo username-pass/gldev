@@ -574,6 +574,8 @@ impl BytecodeInstruction {
             "push -7\npush -4\nretrieve\nstore\npush -4\npush -4\npush 1\nsub\nstore\nret\n",
         );
         lib.insert("get_val", "push -4\nretrieve\nretrieve\nswap\nlabel get_val_loop\ndup\njz get_val_end\nsub 1\nswap\ndiv 256\nswap\njmp get_val_loop\nlabel get_val_end\nswap\nmod 256\nret\n");
+
+        // This thing took me 5 HOURS!!! (And I still got it wrong...l
         lib.insert("set_val", "dup\npush -12\nswap\nstore\npush -13\npush -4\nretrieve\nstore\nretrieve\npush -10\npush 1\nstore\npush -11\npush 0\nstore\ncall set_value\nret\nlabel set_value\nmul -1\ncall unroll_counter\npush -12\npush 19 store\npush -13\npush 1\nstore\ncall reroll\nret\nlabel unroll_counter\nmul -1\ndup\nmod 256\nswap\npush -11\nretrieve\nadd 1\npush -11\nswap\nstore\ndiv 256\nmul -1\ndup\njn unroll_counter\nret\nlabel reroll\npush -13\nretrieve\njz change_val\njmp change_val_end\nlabel change_val\ndrop push -12\nretrieve\nlabel change_val_end\npush -13\nretrieve\nsub 1\npush -13\nswap\nstore\nmul 256\nadd\npush -11\nretrieve\nsub 1\npush -11\nswap\nstore\npush -11\nretrieve\nmul -1\njn reroll\nret\n");
 
         for key in libkeys {
