@@ -222,7 +222,7 @@ impl MacroHolder {
         return self.macros.contains_key(name.as_str());
     }
     pub fn get_def(&self, name: String) -> String {
-        eprint!("NAME: {}", name);
+        // eprint!("NAME: {}", name);
         return self.macros.get(name.as_str()).unwrap().return_definition();
     }
     pub fn add_macro(&mut self, name: String, params: Vec<String>, def: String) {
@@ -387,7 +387,7 @@ impl BytecodeInstruction {
                 }
             }
             "printc" => {
-                if params.is_empty() {
+                if params.join("") == "" {
                     Some(BytecodeInstruction::Printc)
                 } else {
                     None
@@ -707,8 +707,9 @@ impl Bytecode {
         }
         // println!("command: \"{}\", params: {:?}", command, params);
         if BytecodeInstruction::is_instruction(command.as_str()) {
-            // println!("is instruction: {} {:?}", command.as_str(), params);
-
+            if DEBUG {
+                println!("is instruction: {} {:?}", command.as_str(), params);
+            }
             let mut to_remove = (false, 0);
             // add macro definition if macro
             if command == "macro" {
@@ -719,13 +720,13 @@ impl Bytecode {
                     .insert(macro_name.clone(), (params, String::from("")));
                 self.cur_searching.push(macro_name);
             } else if self.cur_searching.len() > 0 {
-                let macro_name = params[0].clone();
+                // let params[0].clone() = params[0].clone();
                 // println!("in macro def (2)");
                 for (i, name) in self.cur_searching.iter().enumerate() {
-                    if command == "endmacro" && *name == macro_name {
+                    if command == "endmacro" && *name == params[0].clone() {
                         // end of macro def
                         to_remove = (true, i);
-                        // println!("found end of macro def for {}", macro_name);
+                        // println!("found end of macro def for {}", params[0].clone());
                         let mut params_minus_one = params.clone();
                         params_minus_one.remove(0);
                         self.macros.add_macro(
@@ -760,9 +761,15 @@ impl Bytecode {
                     }
                 }
                 // println!("EVALUATING THIS: {}", command);
-                let instruction =
-                    BytecodeInstruction::get_instruction(command.as_str(), params).unwrap();
-                self.add_instruction(instruction);
+                // println!(
+                //     "instruction: {:#?}",
+                //     BytecodeInstruction::get_instruction(command.as_str(), params).unwrap()
+                // );
+                if command.as_str() != "" {
+                    let instruction =
+                        BytecodeInstruction::get_instruction(command.as_str(), params).unwrap();
+                    self.add_instruction(instruction);
+                }
             }
             if to_remove.0 {
                 self.temp_macros

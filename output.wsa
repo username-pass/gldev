@@ -11,28 +11,123 @@ push 0
 call set_k
 call set_x
 
-# making var a
-
 drop
 push 1
 
-call get_k
-call get_val
-call set_val
-call get_x
-store
+swap
 drop
-# making var b
+push 0
 
-drop
-push 1
+copy 1
+add
 
-call get_k
-call get_val
-call set_val
-call get_x
-store
-drop
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
+copy 1
+add
+
+add 47
+
+printc
+
+sub 47
+
+swap
 end
 label set_i
 push -5

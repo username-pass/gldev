@@ -1,11 +1,29 @@
 ((bc
 (init 3
-newvar a
 set 1
-put
-newvar b
-set 1
-put
+swap
+set 0
+
+macro fib
+add
+addc 47
+printc
+subc 47
+swap
+endmacro fib
+
+fib
+fib
+fib
+fib
+fib
+fib
+fib
+fib
+fib
+fib
+fib
+
 )
 )
 )
