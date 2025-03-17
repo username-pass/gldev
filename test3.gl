@@ -1,0 +1,16 @@
+(E
+(E
+(N 4)
+(newvar test)
+)
+(E
+(c+ test 3)
+(c bc (
+macro testmacro
+
+endmacro testmacro
+testmacro
+newvar myvar
+))
+)
+)

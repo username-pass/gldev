@@ -11,8 +11,6 @@ push 0
 call set_k
 call set_x
 
-# making var myvar
-
 end
 label set_i
 push -5

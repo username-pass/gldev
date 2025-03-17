@@ -1,7 +1,11 @@
-(bc (
-macro testmacro
-init 4
-endmacro testmacro
-testmacro
-newvar myvar
-))
+((bc
+(init 3
+newvar a
+set 1
+put
+newvar b
+set 1
+put
+)
+)
+)
