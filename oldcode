@@ -1,3 +1,366 @@
+/* // latest old iter
+
+fn do_bytecode_way_less_old(
+    contents: &mut Vec<(char, u8, usize, usize)>,
+    // contents: (char, type, depth, delta)
+    parens: &mut Vec<(usize, usize, usize, bool)>,
+    // parens: (start, end, command_loc, marker)
+    commands: Vec<(String, String, String)>,
+    // commands: (name, def)
+    defs: String,
+) -> String {
+    let SEARCHING_CMD = 0;
+    let EVALUATING = 1;
+    let SEARCHING_PARAM = 2;
+    let WRITING = 3;
+    let STRING_WRITING = 4;
+    // this is the state at a given param
+    // (definition_idx, cur_idx, cmd_loc, start, end, mode, is_escaped)
+    // let mut state: Vec<(usize, usize, usize, usize, usize, u8, bool)> = Vec::new();
+    let mut states: StateHolder = StateHolder { states: Vec::new() };
+    let mut to_push: Option<State> = None;
+    // state holds the state like this:
+    // each depth has its own value in the following format:
+    // (definition_idx, cur_idx, cmd_loc, start, end, mode, is_escaped)
+    let mut global_idx = 0;
+    let mut last_type = CLOSE_PAREN;
+    let mut is_escaped = false;
+    let mut command_stack: Vec<(usize, usize)> = Vec::new();
+    let mut mode = SEARCHING_CMD;
+    let mut cur_state_idx = 0;
+    let mut output = String::from("");
+    let mut new_mode = SEARCHING_CMD;
+    // this should work as each item in the loop does one thing. There shouldn't be
+    // too many nested layers.
+    // The exception is writing a string, where it just repeatedly writes the string
+    // that might also change
+    // the idea is that you change modes, and each mode does one different thing
+    // so write might write the current char, and search cmd might just move to the
+    // next cmd
+    // find location of command
+    states.push(State {
+        def_idx: 0,           // index within definition of the current command
+        cur_idx: 0,           // index within the actual code being iterated on
+        cmd_loc: parens[0].2, // location of command in command array
+        start: parens[0].0,   // start index of the current parameter
+        end: parens[0].1,     // index of final char of current param
+        dmode: SEARCHING_CMD, // the current mode of the full state
+        is_escaped: false,    // whether or not the current char is escaped
+        callback_idx: 0,      // the index of the callback state when needed
+    });
+    let mut iterations = 0; //DEBUG, remove
+    loop {
+        iterations += 1;
+        match to_push {
+            Some(ref state) => {
+                states.push(state.clone());
+                to_push = None;
+                continue;
+            }
+            None => {}
+        }
+        let states_len = states.len();
+        // global_idx is to find the current mode and all that
+        if global_idx >= contents.len() {
+            break;
+        }
+        let mut cur_state = states.get_state(cur_state_idx);
+        if cur_state.cur_idx >= contents.len() {
+            // let (c, token_type, depth, delta) = contents[cur_state.cur_idx - 1];
+            // // print!("{:?}\n", contents[cur_state.cur_idx - 1]);
+
+            break;
+        }
+
+        // let next_cmd = def.chars().nth(cur_state.def_idx).unwrap();
+        print!(
+            "===\niter: {}\tcur_state: {} cur_char: {} next_cmd: {} def: \"{}\"\n{:?}\n{:?}\n",
+            iterations,
+            cur_state_idx,
+            contents[cur_state.cur_idx].0,
+            commands[cur_state.cmd_loc]
+                .2
+                .chars()
+                .nth(cur_state.def_idx)
+                .unwrap(),
+            commands[cur_state.cmd_loc].2,
+            cur_state,
+            command_stack
+        );
+        if commands[cur_state.cmd_loc]
+            .2
+            .chars()
+            .nth(cur_state.def_idx)
+            .unwrap()
+            == 'n'
+            && cur_state.dmode != STRING_WRITING
+        {
+            assert!("we reached" == "an 'n'");
+        }
+
+        //     assert!("curstate" == "n");
+        // }
+
+        // now to evaluate the modes
+        if cur_state.dmode == SEARCHING_CMD {
+            // looking for next command, so increment idx until it's a command
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
+            let (param_start, param_end, param_cmd_loc, _) = parens[depth + delta - 1];
+            let next_cmd = def.chars().nth(cur_state.def_idx).unwrap();
+
+            if depth + delta - 1 >= states_len {
+                // print!(
+                //     "writing, starting at: {:?}\nparam start, end ({}\t{})\n",
+                //     contents[cur_state.cur_idx], param_start, param_end
+                // );
+                //     print!(
+                //         "cur state is {}, state len is {}, mode is {}\n",
+                //         depth + delta - 1,
+                //         states_len,
+                //         cur_state.dmode
+                //     );
+
+                to_push = Some(State {
+                    def_idx: 0,
+                    cur_idx: cur_state.cur_idx,
+                    cmd_loc: param_cmd_loc,
+                    start: param_start,
+                    end: param_end,
+                    dmode: SEARCHING_CMD,
+                    is_escaped: false,
+                    callback_idx: cur_state_idx,
+                });
+                continue;
+            }
+            if token_type == COMMAND {
+                // print!(
+                //     "writing, starting at: {:?}\nparam start, end ({}\t{})\n",
+                //     contents[cur_state.cur_idx], param_start, param_end
+                // );
+                // change the state to the new command
+                cur_state_idx = depth + delta - 1;
+                cur_state = states.get_state(cur_state_idx);
+
+                //     print!("idx: {}, len: {}\n", cur_state_idx, states_len);
+                assert!(cur_state_idx <= states_len);
+                //this is a command, break and continue to evaluation
+                cur_state.dmode = EVALUATING;
+                continue;
+            }
+            // no command found
+            // continue searching
+            cur_state.increment_cur_idx();
+            continue;
+        } else if cur_state.dmode == EVALUATING {
+            //this is the switchboard to find what to do next based on the command
+            let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
+
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            if def.is_empty() {
+                //     print!("no def! time to continue onward...\n");
+                cur_state.dmode = SEARCHING_CMD;
+                cur_state.cur_idx = cur_state.end + 1;
+                continue;
+            }
+            // print!(
+            //     "cmd: {}\tdef: {}\tdef_idx: {}\tcmd_loc: {}\n",
+            //     cmd, def, cur_state.def_idx, cur_state.cmd_loc
+            // );
+            let next_cmd = def.chars().nth(cur_state.def_idx).unwrap();
+            // print!(
+            //     "c: {}\tcmd: {}\tidx: {}\tcur_idx: {}\tdefault: \"{}\"\tdef: \"{}\"\tnext: {}\n",
+            //     c, cmd, cur_state.def_idx, cur_state.cur_idx, default, def, next_cmd
+            // );
+            print!(
+                "next cmd: {}, idx: {}\t{:?}\n",
+                next_cmd, cur_state.def_idx, cur_state
+            );
+
+            if next_cmd == 'x' {
+                // no-op, do nothing
+                cur_state.increment_def_idx();
+                continue;
+            } else if next_cmd == 's' {
+                //     print!("String command!\n");
+                // command is to write a string
+                cur_state.dmode = STRING_WRITING;
+                cur_state.increment_def_idx();
+                continue;
+                default = &String::from("");
+            } else if next_cmd == 'p' {
+                // push value to stack
+                print!("setting to searching param");
+                cur_state.dmode = SEARCHING_PARAM;
+                continue;
+            } else if next_cmd == 'e' {
+                // pop top command and execute
+                let (cmd_start, cmd_end) = command_stack.pop().unwrap();
+                cur_state.cur_idx = cmd_start;
+                cur_state.dmode = EVALUATING;
+                // cur_state.increment_cur_idx();
+                continue;
+            } else if next_cmd == 'w' {
+                let (cmd_start, cmd_end) = command_stack.pop().unwrap();
+                // cur_state.cur_idx = cmd_start;
+                let (new_c, new_type, new_depth, new_delta) = contents[cmd_start];
+
+                cur_state_idx = new_depth + new_delta - 1;
+                assert!(cur_state_idx < states_len);
+
+                cur_state = states.get_state(cur_state_idx);
+                cur_state.set_dmode(WRITING);
+
+                // cur_state.dmode = SEARCHING_PARAM;
+                cur_state.increment_cur_idx();
+                continue;
+            } else if next_cmd == 'q' {
+                // end of command, going to next command
+                cur_state.dmode = SEARCHING_CMD;
+                cur_state.cur_idx = cur_state.end + 1;
+            } else if next_cmd == 'n' {
+                print!("Next param\n");
+                cur_state.increment_def_idx();
+                cur_state.dmode = SEARCHING_PARAM;
+                continue;
+            } else {
+                // this probably shouldn't be hit, so just panic
+                //     print!(
+                //         "next_cmd \"{}\", idx: {}, def {}\n",
+                //         next_cmd, cur_state.def_idx, def
+                //     );
+                assert!(next_cmd == '2');
+            }
+        } else if cur_state.dmode == STRING_WRITING {
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let cur_char = def.chars().nth(cur_state.def_idx).unwrap();
+            // print!("writing string. cur_char: {}\n", cur_char);
+            if !(cur_state.is_escaped) && cur_char == '\\' {
+                cur_state.is_escaped = true;
+                cur_state.increment_def_idx();
+                continue;
+            } else if !(cur_state.is_escaped) && cur_char == ' ' {
+                // end of string to write
+                //     print!(
+                //         "ending space, idx: {}\tis_escaped: {}\n",
+                //         cur_state.def_idx, cur_state.is_escaped
+                //     );
+                cur_state.dmode = EVALUATING;
+                cur_state.increment_def_idx();
+                continue;
+            } else if !(cur_state.is_escaped) && cur_char == 'q' {
+                // end of definition, refer to EVALUATING mode to deal with that
+                cur_state.dmode = EVALUATING;
+                continue;
+            } else if cur_state.is_escaped && cur_char == 'n' {
+                // TODO: FIX FOR INIT!!!!
+                // \n character, return newline
+                output.push('\n');
+                cur_state.increment_def_idx();
+                continue;
+            } else if cur_state.is_escaped && cur_char == 't' {
+                // \t character, return tab
+                output.push('\t');
+                cur_state.increment_def_idx();
+                continue;
+            } else {
+                // reset being escaped
+                cur_state.is_escaped = false;
+                output.push(cur_char);
+                cur_state.increment_def_idx();
+                continue;
+            }
+        } else if cur_state.dmode == SEARCHING_PARAM {
+            let (cmd, default, def) = &commands[cur_state.cmd_loc];
+            let next_cmd = def.chars().nth(cur_state.def_idx).unwrap();
+            let (c, token_type, depth, delta) = contents[cur_state.cur_idx];
+            let (param_start, param_end, param_cmd_loc, _) = parens[depth + delta - 1];
+            // print!("Searching param {}\n", c);
+            if token_type != OPEN_PAREN && token_type != SOLO_PARAM {
+                // haven't found param, keep looking
+                cur_state.increment_cur_idx();
+                continue;
+            }
+
+            // have found param, execute the next token
+            let cur_char = def.chars().nth(cur_state.def_idx).unwrap();
+            // print!("found param: {:?}\n", contents[cur_state.cur_idx]);
+            if cur_char == 'p' {
+                print!("====\n\nPUSHING START AND END\n\n====\n");
+                command_stack.push((param_start, param_end));
+                cur_state.increment_def_idx();
+                cur_state.dmode = EVALUATING;
+                // print!(
+                //     "pushed start end ({}\t{}) {}\n",
+                //     param_start,
+                //     param_end,
+                //     depth + delta - 1
+                // );
+                //     print!("next cmd: {}\n", next_cmd);
+                cur_state.set_cur_idx(cur_state.start);
+                continue;
+            } else {
+                print!("cur_char: {}\n", cur_char);
+                // assert!(cur_char == '3');
+                cur_state.set_dmode(EVALUATING);
+                continue;
+            }
+        } else if cur_state.dmode == WRITING {
+            // ref mutcur_state.def_idx,
+            // ref mut cur_idx,
+            // cur_state.cmd_loc,
+            // start,
+            // end,
+            // ref mut dmode,
+            // ref mutcur_state.is_escaped,
+            // print!(
+            //     "c, type, depth, delta:\t{:?}\n",
+            //     contents[cur_state.cur_idx]
+            // );
+            if cur_state.cur_idx <= cur_state.start {
+                //     print!(
+                //         "starting!, {}\t{}\n",
+                //         cur_state.cur_idx, contents[cur_state.cur_idx].0
+                //     );
+                if contents[cur_state.cur_idx].1 == OPEN_PAREN {
+                    // if open paren at beginning, skip
+                    cur_state.increment_cur_idx();
+                    continue;
+                }
+            }
+            if cur_state.cur_idx >= cur_state.end {
+                print!(
+                    "ending, def_idx: {}\tend: {}\tidx: {}\n",
+                    cur_state.def_idx, cur_state.end, cur_state.cur_idx
+                );
+                cur_state.dmode = SEARCHING_CMD;
+                // cur_state.increment_def_idx();
+                // depth and delta of next character (should be previous state)
+                let (_, _, depth_next, delta_next) = contents[cur_state.cur_idx + 1];
+                if contents[cur_state.cur_idx].1 == SOLO_PARAM {
+                    // if it's a solo param, push the last char
+                    output.push(contents[cur_state.cur_idx].0);
+                }
+                // go back to beginning
+                cur_state.set_cur_idx(cur_state.start);
+                cur_state_idx = cur_state.callback_idx; // go back to original state
+                cur_state = states.get_state(cur_state_idx);
+                cur_state.increment_def_idx();
+                print!("calling back to {}\n", cur_state_idx);
+                continue;
+            }
+            output.push(contents[cur_state.cur_idx].0);
+            cur_state.increment_cur_idx();
+            continue;
+        }
+        print!("dmode: {}\n", cur_state.dmode);
+        assert!("a" == "b");
+    }
+    return output;
+}
+*/
+
+
 
 /* //previous items
 if global_idx > 0 {

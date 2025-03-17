@@ -158,6 +158,11 @@ swaps `WC1` and `WC2` values
 subtracts `WC2` from `WC1`, setting `WC1` to the new value. It stops at 0,
 `WC1 = max(WC1 - WC2, 0)`
 
+### add
+
+adds `WC2` and `WC1`, setting `WC1` to the new value.
+`WC1 = WC1 + WC2`
+
 ### put
 
 sets the current cell to `WC1`, overriding the value
@@ -187,7 +192,7 @@ sets `WC1` to 0, the same as `set 0`
 
 prints `WC1` to stdout as ascii value. (So, to print `A`, `WC1` should be `65`)
 
-### input
+### inputc
 
 inputs the next char/byte from stdin, sets `WC1` to the new value. A bit like
 load, except from stdin instead of a variable

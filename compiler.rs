@@ -1,7 +1,7 @@
 #!allow(warnings)]
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
-
 const FILENAME: &str = "test.gl";
 
 const SOLO_PARAM: u8 = 0;
@@ -16,7 +16,7 @@ const SEARCHING_PARAM: u8 = 2;
 const WRITING: u8 = 3;
 const STRING_WRITING: u8 = 4;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 
 #[derive(Debug, Clone, Copy)]
 struct State {
@@ -105,11 +105,11 @@ impl State {
     // TODO: make it smarter and store internally(?)
     pub fn next_def_cmd(&mut self, def_item: Command) -> char {
         let def_chars = def_item.clone().def;
-        println!("def_idx: {}, def:{:?}", self.def_idx, def_item);
+        // println!("def_idx: {}, def:{:?}", self.def_idx, def_item);
         if def_chars.len() > self.def_idx {
             return def_chars.chars().nth(self.def_idx).unwrap();
         }
-        println!("going to default cmd");
+        // println!("going to default cmd");
         // if it's past the def, go to the default
         let default_chars = def_item.clone().default;
         let idx = (self.def_idx - def_chars.len()) % default_chars.len();
@@ -201,28 +201,594 @@ impl StateHolder {
     }
 }
 
-enum BytecodeType {
-    Macro,
-    EndMacro,
-    Init,
-    NewVar,
-    JumpToArr,
-    JumpToVar,
-    Load,
-    WorkingAdd,
-    WorkingSub,
-    WorkingSet,
-    Clear,
-    While,
-    End,
+// WARNING:
+// All of this macro code was written at about 2AM, it's really bad
+#[derive(Clone, Debug)]
+struct MacroHolder {
+    pub macros: HashMap<String, BytecodeMacro>,
 }
 
-struct BytecodeItem {
-    pub bc_type: BytecodeType,
-    pub bc_params: Vec<i64>,
-    pub macro_replace: String, // thing to replace with
-    pub bf_code: String,       // bf compiled code
-    pub ws_code: String,       // ws compiled code
+impl MacroHolder {
+    // tests if a string is a defined macro
+    pub fn new() -> MacroHolder {
+        let holder = MacroHolder {
+            macros: std::collections::HashMap::new(),
+        };
+        // deal with empty strings
+        // holder.add_macro(String::from(""), Vec::new(), String::from(""));
+        return holder;
+    }
+    pub fn is_macro(&self, name: String) -> bool {
+        return self.macros.contains_key(name.as_str());
+    }
+    pub fn get_def(&self, name: String) -> String {
+        return self.macros.get(name.as_str()).unwrap().return_definition();
+    }
+    pub fn add_macro(&mut self, name: String, params: Vec<String>, def: String) {
+        self.macros
+            .insert(name.clone(), BytecodeMacro::new(name.clone(), params, def));
+    }
+    pub fn replace_params(&self, def: String, params: Vec<String>) -> String {
+        let out = def;
+        for param in params {
+            // println!("param to replace: {}", param);
+        }
+        return out;
+    }
+    pub fn expand_macros(&self, name: String, params: Vec<String>) -> String {
+        let def = self.get_def(name);
+        return self.replace_params(def, params).to_string();
+        // return self.macros.get(name).unwrap().to_string();
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BytecodeMacro {
+    pub name: String,
+    pub params: Vec<String>,
+    pub def: String,
+}
+
+impl BytecodeMacro {
+    pub fn new(name: String, params: Vec<String>, def: String) -> BytecodeMacro {
+        return BytecodeMacro { name, params, def };
+    }
+    pub fn return_definition(&self) -> String {
+        return self.def.clone();
+    }
+}
+
+#[derive(Debug, Clone)]
+enum BytecodeInstruction {
+    Init { n: usize },
+    NewVar { var_name: String },
+    Jta { array_name: String },
+    Jtv { var_name: String },
+    Jtc { var_name: String },
+    NextVar,
+    PrevVar,
+    NextArr,
+    PrevArr,
+    NextChar,
+    PrevChar,
+    While { loopname: String },
+    EndWhile { loopname: String },
+    Load,
+    Swap,
+    Sub,
+    Add,
+    Put,
+    AddC { c: usize },
+    SubC { c: usize },
+    Set { c: usize },
+    Clear,
+    Printc,
+    Inputc,
+    Error,
+    End,
+}
+impl BytecodeInstruction {
+    pub fn get_instruction(instruction_name: &str, params: Vec<String>) -> Option<Self> {
+        match instruction_name {
+            "init" => {
+                if params.len() == 1 {
+                    if let Ok(n) = params[0].parse::<usize>() {
+                        Some(BytecodeInstruction::Init { n })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            "newvar" => {
+                if params.len() == 1 {
+                    Some(BytecodeInstruction::NewVar {
+                        var_name: params[0].clone(),
+                    })
+                } else {
+                    None
+                }
+            }
+            "jta" => {
+                if params.len() == 1 {
+                    Some(BytecodeInstruction::Jta {
+                        array_name: params[0].clone(),
+                    })
+                } else {
+                    None
+                }
+            }
+            "jtv" => {
+                if params.len() == 1 {
+                    Some(BytecodeInstruction::Jtv {
+                        var_name: params[0].clone(),
+                    })
+                } else {
+                    None
+                }
+            }
+            "jtc" => {
+                if params.len() == 1 {
+                    Some(BytecodeInstruction::Jtc {
+                        var_name: params[0].clone(),
+                    })
+                } else {
+                    None
+                }
+            }
+            "while" => {
+                if params.len() == 1 {
+                    let Ok(loopname) = params[0].parse::<String>();
+                    Some(BytecodeInstruction::While { loopname })
+                } else {
+                    None
+                }
+            }
+            "addc" => {
+                if params.len() == 1 {
+                    if let Ok(c) = params[0].parse::<usize>() {
+                        Some(BytecodeInstruction::AddC { c })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            "subc" => {
+                if params.len() == 1 {
+                    if let Ok(c) = params[0].parse::<usize>() {
+                        Some(BytecodeInstruction::SubC { c })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            "set" => {
+                if params.len() == 1 {
+                    if let Ok(c) = params[0].parse::<usize>() {
+                        Some(BytecodeInstruction::Set { c })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            "clear" => {
+                if params.is_empty() {
+                    Some(BytecodeInstruction::Clear)
+                } else {
+                    None
+                }
+            }
+            "printc" => {
+                if params.is_empty() {
+                    Some(BytecodeInstruction::Printc)
+                } else {
+                    None
+                }
+            }
+            "inputc" => {
+                if params.is_empty() {
+                    Some(BytecodeInstruction::Inputc)
+                } else {
+                    None
+                }
+            }
+            "error" => {
+                if params.is_empty() {
+                    Some(BytecodeInstruction::Error)
+                } else {
+                    None
+                }
+            }
+            "end" => {
+                if params.is_empty() {
+                    Some(BytecodeInstruction::End)
+                } else {
+                    None
+                }
+            }
+            // For instructions without parameters
+            "nextvar" => Some(BytecodeInstruction::NextVar),
+            "prevvar" => Some(BytecodeInstruction::PrevVar),
+            "nextarr" => Some(BytecodeInstruction::NextArr),
+            "prevarr" => Some(BytecodeInstruction::PrevArr),
+            "nextchar" => Some(BytecodeInstruction::NextChar),
+            "prevchar" => Some(BytecodeInstruction::PrevChar),
+            "endwhile" => {
+                if params.len() == 1 {
+                    let Ok(loopname) = params[0].parse::<String>();
+                    Some(BytecodeInstruction::While { loopname })
+                } else {
+                    None
+                }
+            }
+            "load" => Some(BytecodeInstruction::Load),
+            "swap" => Some(BytecodeInstruction::Swap),
+            "sub" => Some(BytecodeInstruction::Sub),
+            "add" => Some(BytecodeInstruction::Add),
+            "put" => Some(BytecodeInstruction::Put),
+            _ => None,
+        }
+    }
+    pub fn get_wsa_definition(&self, vars: VarsHolder) -> String {
+        match self {
+            BytecodeInstruction::Init { n } => {
+                format!("push -1\npush {}\nstore\npush 0\ncall set_i\npush 1\ncall set_j\npush 0\ncall set_k\ncall set_x\n", n)
+            }
+            BytecodeInstruction::NewVar { var_name } => {
+                // format!("declare variable {}", vars.get_var(var_name))
+                format!("# making var {}\n", var_name)
+            }
+            BytecodeInstruction::Jta { array_name } => {
+                // the formatting is done in the VarsHolder
+                format!("{}\n", vars.get_pos_set(array_name))
+            }
+            BytecodeInstruction::Jtv { var_name } => {
+                // the formatting is done in the VarsHolder
+                format!("{}\n", vars.get_pos_set(var_name))
+            }
+            BytecodeInstruction::Jtc { var_name } => {
+                // the formatting is done in the VarsHolder
+                format!("{}\n", vars.get_pos_set(var_name))
+            }
+            BytecodeInstruction::NextVar => "call inc_j".to_string(),
+            BytecodeInstruction::PrevVar => "call dec_j".to_string(),
+            BytecodeInstruction::NextArr => "call inc_i".to_string(),
+            BytecodeInstruction::PrevArr => "call dec_i".to_string(),
+            BytecodeInstruction::NextChar => "call inc_k".to_string(),
+            BytecodeInstruction::PrevChar => "call dec_k".to_string(),
+            BytecodeInstruction::While { loopname } => {
+                // the formatting is done in the VarsHolder
+                format!("mul -1\nlabel {}\nmul -1\n", loopname)
+            }
+            BytecodeInstruction::EndWhile { loopname } => {
+                // the formatting is done in the VarsHolder
+                format!("dup\nmul -1\n jn {}\nret\n", loopname)
+            }
+            // BytecodeInstruction::EndWhile => "end while loop".to_string(),
+            BytecodeInstruction::Load => "call get_val".to_string(),
+            BytecodeInstruction::Swap => "swap".to_string(),
+            BytecodeInstruction::Sub => "copy 1\nsub\n".to_string(),
+            BytecodeInstruction::Add => "copy 1\nadd\n".to_string(),
+            BytecodeInstruction::Put => {
+                "call get_k\ncall get_val\ncall set_val\ncall get_x\nstore\ndrop".to_string()
+            }
+            BytecodeInstruction::AddC { c } => {
+                format!("add {}\n", c)
+            }
+            BytecodeInstruction::SubC { c } => {
+                format!("sub {}\n", c)
+            }
+            BytecodeInstruction::Set { c } => {
+                format!("drop\npush {}\n", c)
+            }
+            BytecodeInstruction::Clear => "drop\npush 0\n".to_string(),
+            BytecodeInstruction::Printc => "printc\n".to_string(),
+            BytecodeInstruction::Inputc => "push -8\nreadc\npush -8\nretrieve\n".to_string(),
+            BytecodeInstruction::Error => "call error_handler\n".to_string(),
+            BytecodeInstruction::End => "end\n".to_string(),
+        }
+    }
+    pub fn replace_wsa_lib(raw: String) -> String {
+        let mut output = raw;
+        let mut lib = HashMap::new();
+        // copy 1 might not work.... We'll see
+        let libkeys = [
+            "set_i",
+            "set_j",
+            "set_k",
+            "set_x",
+            "get_i",
+            "get_i_last",
+            "get_j",
+            "get_j_last",
+            "get_k",
+            "get_k_last",
+            "get_N",
+            "inc_i",
+            "inc_j",
+            "inc_k",
+            "dec_i",
+            "dec_j",
+            "dec_k",
+            "get_val",
+            "set_val",
+        ];
+        lib.insert(
+            "set_i",
+            "push -5\npush -2\nretrieve\nstore\npush -2\ncopy 1\nstore\nret\n",
+        );
+        lib.insert(
+            "set_j",
+            "push -6\npush -3\nretrieve\nstore\npush -3\ncopy 1\nstore\nret\n",
+        );
+        lib.insert(
+            "set_k",
+            "push -7\npush -4\nretrieve\nstore\npush -4\ncopy 1\nstore\nret\n",
+        );
+        lib.insert(
+            "set_x",
+            "push -2\nretrieve\npush -3\nretrieve\npush -1\nretrieve\nmul\nadd\nret\n",
+        );
+        lib.insert("get_i", "push -2\nretrieve\nret\n");
+        lib.insert("get_i_last", "push -5\nretrieve\nret\n");
+        lib.insert("get_j", "push -3\nretrieve\nret\n");
+        lib.insert("get_j_last", "push -6\nretrieve\nret\n");
+        lib.insert("get_k", "push -4\nretrieve\nret\n");
+        lib.insert("get_k_last", "push -7\nretrieve\nret\n");
+        lib.insert("get_N", "push -1\nretrieve\nret\n");
+        lib.insert(
+            "inc_i",
+            "push -5\npush -2\nretrieve\nstore\npush -2\npush -2\npush 1\nadd\nstore\nret\n",
+        );
+        lib.insert(
+            "inc_j",
+            "push -6\npush -3\nretrieve\nstore\npush -3\npush -3\npush 1\nadd\nstore\nret\n",
+        );
+        lib.insert(
+            "inc_k",
+            "push -7\npush -4\nretrieve\nstore\npush -4\npush -4\npush 1\nadd\nstore\nret\n",
+        );
+        lib.insert(
+            "dec_i",
+            "push -5\npush -2\nretrieve\nstore\npush -2\npush -2\npush 1\nsub\nstore\nret\n",
+        );
+        lib.insert(
+            "dec_j",
+            "push -6\npush -3\nretrieve\nstore\npush -3\npush -3\npush 1\nsub\nstore\nret\n",
+        );
+        lib.insert(
+            "dec_k",
+            "push -7\npush -4\nretrieve\nstore\npush -4\npush -4\npush 1\nsub\nstore\nret\n",
+        );
+        lib.insert("get_val", "push -4\nretrieve\nretrieve\nswap\nlabel get_val_loop\ndup\njz get_val_end\nsub 1\nswap\ndiv 256\nswap\njmp get_val_loop\nlabel get_val_end\nswap\nmod 256\nret\n");
+        lib.insert("set_val", "dup\npush -12\nswap\nstore\npush -13\npush -4\nretrieve\nstore\nretrieve\npush -10\npush 1\nstore\npush -11\npush 0\nstore\ncall set_value\nret\nlabel set_value\nmul -1\ncall unroll_counter\npush -12\npush 19 store\npush -13\npush 1\nstore\ncall reroll\nret\nlabel unroll_counter\nmul -1\ndup\nmod 256\nswap\npush -11\nretrieve\nadd 1\npush -11\nswap\nstore\ndiv 256\nmul -1\ndup\njn unroll_counter\nret\nlabel reroll\npush -13\nretrieve\njz change_val\njmp change_val_end\nlabel change_val\ndrop push -12\nretrieve\nlabel change_val_end\npush -13\nretrieve\nsub 1\npush -13\nswap\nstore\nmul 256\nadd\npush -11\nretrieve\nsub 1\npush -11\nswap\nstore\npush -11\nretrieve\nmul -1\njn reroll\nret\n");
+
+        for key in libkeys {
+            let def = lib.get(key).unwrap();
+            eprintln!("item, def: {}", key);
+            // output = output.replace(item, (String::from("call ") + item).as_str());
+            // output.push_str("label " + item + "\n" + def);
+            output.push_str("end\nlabel ");
+            output.push_str(key);
+            output.push_str("\n");
+            output.push_str(def);
+            output.push_str("\n");
+        }
+
+        return output;
+    }
+    pub fn is_instruction(test: &str) -> bool {
+        return [
+            "macro", "endmacro", "init", "newvar", "jta", "jtv", "jtc", "nextvar", "nextarr",
+            "nextchar", "prevvar", "prevarr", "prevchar", "while", "end", "load", "swap", "sub",
+            "add", "put", "addc", "subc", "set", "clear", "printc", "inputc", "error", "exit",
+        ]
+        .contains(&test);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VarsHolder {
+    vars_locs: HashMap<String, (u16, u16, u16)>,
+    vars: Vec<String>,
+}
+
+impl VarsHolder {
+    pub fn new() -> VarsHolder {
+        return VarsHolder {
+            vars_locs: HashMap::new(),
+            vars: Vec::new(),
+        };
+    }
+    pub fn add_var(&mut self, varname: &str, loc: (u16, u16, u16)) {
+        if self.vars_locs.contains_key(varname) {
+            return;
+        }
+        self.vars_locs.insert(varname.to_string(), loc);
+        self.vars.push(varname.to_string());
+    }
+    pub fn get_var(&self, varname: &str) -> String {
+        // println!("getting var for {}", varname);
+        return VarsHolder::merge_tuple(self.get_loc(varname)).to_string();
+    }
+
+    pub fn has_var(&self, varname: &str) -> bool {
+        return self.vars_locs.contains_key(varname);
+    }
+
+    pub fn get_loc(&self, varname: &str) -> (u16, u16, u16) {
+        // println!("getting var for {}", varname);
+        return *self.vars_locs.get(varname).unwrap();
+    }
+    pub fn merge_tuple(tuples: (u16, u16, u16)) -> String {
+        let (a, b, c) = tuples;
+        format!("{} {} {}", a, b, c)
+    }
+    pub fn get_pos_set(&self, varname: &str) -> String {
+        let (a, b, c) = *self.vars_locs.get(varname).unwrap();
+        format!(
+            "push {}\ncall set_i\npush {}\ncall set_j\npush {}\ncall set_k\ncall set_x\n",
+            a, b, c
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Bytecode {
+    instructions: Vec<BytecodeInstruction>,
+    macros: MacroHolder,
+    // name, (params, def)
+    temp_macros: HashMap<String, (Vec<String>, String)>,
+    // name
+    cur_searching: Vec<String>,
+    vars: VarsHolder,
+    cur_loc: (u16, u16, u16),
+}
+
+impl Bytecode {
+    pub fn new() -> Self {
+        Bytecode {
+            instructions: Vec::new(),
+            macros: MacroHolder::new(),
+            temp_macros: HashMap::new(),
+            cur_searching: Vec::new(),
+            cur_loc: (0, 1, 0),
+            vars: VarsHolder::new(),
+        }
+    }
+
+    pub fn input_raw_commands(&mut self, combined: &str) {
+        for split in combined.split(['\n', ';']) {
+            self.process_cmd(split);
+        }
+    }
+
+    pub fn generate_wsa(&self) -> String {
+        let mut output = String::from("");
+        for instruction in self.instructions.clone().iter() {
+            output.push_str(instruction.get_wsa_definition(self.vars.clone()).as_str());
+            output.push('\n');
+        }
+        output = BytecodeInstruction::replace_wsa_lib(output);
+        return output;
+    }
+
+    pub fn process_cmd(&mut self, line: &str) {
+        // println!("processing cmd: {}", line);
+        if line == "" {
+            // blank line, ignore
+            return;
+        }
+        let mut params = Vec::new();
+        let mut command = String::from("");
+        for param in line.split([' ', '\t']) {
+            if command == "" {
+                // println!("command: {}", param);
+                command = String::from(param);
+            } else {
+                // println!("param: {}", param);
+                params.push(String::from(param));
+            }
+        }
+        // println!("command: \"{}\", params: {:?}", command, params);
+        if BytecodeInstruction::is_instruction(command.as_str()) {
+            // println!("is instruction: {} {:?}", command.as_str(), params);
+
+            let mut to_remove = (false, 0);
+            let macro_name = params[0].clone();
+            // add macro definition if macro
+            if command == "macro" {
+                // println!("started macro def (1)");
+                // params.remove(0);
+                self.temp_macros
+                    .insert(macro_name.clone(), (params, String::from("")));
+                self.cur_searching.push(macro_name);
+            } else if self.cur_searching.len() > 0 {
+                // println!("in macro def (2)");
+                for (i, name) in self.cur_searching.iter().enumerate() {
+                    if command == "endmacro" && *name == macro_name {
+                        // end of macro def
+                        to_remove = (true, i);
+                        // println!("found end of macro def for {}", macro_name);
+                        let mut params_minus_one = params.clone();
+                        params_minus_one.remove(0);
+                        self.macros.add_macro(
+                            name.clone(),
+                            params_minus_one,
+                            self.temp_macros.get(name).unwrap().1.clone(),
+                        );
+                    } else {
+                        // println!("name: {}, temp macros: {:?}", name, self.temp_macros);
+                        self.temp_macros
+                            .get_mut(name)
+                            .unwrap()
+                            .1
+                            .push_str(&(String::from("\n") + &command + " " + &params.join(" ")));
+                    }
+                }
+            } else {
+                let label = params[0].as_str();
+                if self.vars.has_var(label) {
+                    self.cur_loc = self.vars.get_loc(label);
+                } else if command == "newvar" {
+                    self.cur_loc.1 += 1;
+                    self.vars.add_var(label, self.cur_loc);
+                    // increment variable idx
+                } else if command == "jta" {
+                    self.vars.add_var(label, self.cur_loc);
+                    self.cur_loc.0 += 1;
+                } else if command == "jtc" {
+                    self.cur_loc.2 += 1;
+                    self.vars.add_var(label, self.cur_loc);
+                }
+                // println!("EVALUATING THIS: {}", command);
+                let instruction =
+                    BytecodeInstruction::get_instruction(command.as_str(), params).unwrap();
+                self.add_instruction(instruction);
+            }
+            if to_remove.0 {
+                self.temp_macros
+                    .remove(self.cur_searching.get(to_remove.1).unwrap());
+                self.cur_searching.remove(to_remove.1);
+            }
+        } else if self.macros.is_macro(command.to_string()) {
+            // println!("eval macro def (3)");
+            // println!("is macro! {}", command);
+            self.input_raw_commands(self.macros.expand_macros(command, params).as_str());
+        } else {
+            // println!("other (4)");
+            // println!("macro usage! '{}'\n{:#?}", command, self.macros);
+            let def = self.macros.get_def(command);
+            let new_def = self.macros.replace_params(def, params);
+            // println!("new def: {}", new_def);
+        }
+    }
+
+    pub fn get_instructions(self, command: &str, args: Vec<String>) {
+        if self.macros.is_macro(command.to_string()) {}
+    }
+    pub fn add_instruction(&mut self, instruction: BytecodeInstruction) {
+        self.instructions.push(instruction);
+    }
+
+    // pub fn add_macro_definition(
+    //     &mut self,
+    //     name: String,
+    //     params: Vec<String>,
+    //     body: String,
+    // ) {
+
+    //     self.macros.insert(name, macro_def);
+    // }
+
+    pub fn resolve_macros(&mut self) {}
 }
 
 struct Macro {
@@ -280,9 +846,15 @@ fn main() -> std::io::Result<()> {
             );
         }
     }
+
     let bytecode = make_bytecode(&mut contents, &mut parens, commands, defs);
-    print!("Got bytecode!\n===\n{}\n===\n", bytecode.clone());
-    let _macro_replaced_bytecode = replace_macros(bytecode);
+    // print!("Got bytecode!\n===\n{}\n===\n", bytecode.clone());
+    let mut macro_replaced_bytecode = Bytecode::new();
+    macro_replaced_bytecode.input_raw_commands(bytecode.as_str());
+
+    let generated_bytecode = macro_replaced_bytecode.generate_wsa();
+    // println!("bytecode stuff: {:#?}", macro_replaced_bytecode);
+    println!(";generated bytecode: \n;===\n{}\n;===", generated_bytecode);
     // let whitespace = compile_whitespace(bytecode);
     // let brainfck = compile_brainfck(bytecode);
     Ok(())
@@ -290,7 +862,7 @@ fn main() -> std::io::Result<()> {
 
 fn load_defs(defs: &mut String) {
     //while loop definition
-    defs.push_str(r#"wnxnppes\\nwhile\\n npees\\nend\\n q"#);
+    defs.push_str(r#"wnxnppes\\nwhile\\n npes\\n es\\nend\\n q"#);
     //init command definition
     defs.push_str(r#"Nnxnsinit\\  pws\\n q"#);
     //comments
@@ -301,45 +873,12 @@ fn load_defs(defs: &mut String) {
     defs.push_str("-nxnpnpees\nadd q");
     defs.push_str("bcnpwnpwq");
     defs.push_str("testnxnsa pwnpwq");
-    print!("defs: {}", defs);
+    // print!("defs: {}", defs);
 }
 
-fn replace_macros(bytecode: String) {
-    let new_bytecode: Vec<BytecodeItem> = Vec::new();
-    let macros: Vec<Macro> = Vec::new();
-    let NEXT_COMMAND = 0;
-    let NEXT_PARAM = 0;
-
-    let mut cur_idx = 0;
-    let in_macro = false;
-    let macro_start = 0;
-    let macro_end = 0;
-    let mut cur_cmd = String::from("");
-    let mut cur_params: Vec<String> = Vec::new();
-    cur_params.push(String::from(""));
-    let bytecode_len = bytecode.len();
-    let mut looking_for = NEXT_COMMAND;
-    loop {
-        println!("cur_idx: {}", cur_idx);
-        if cur_idx >= bytecode_len {
-            break;
-        }
-        // loop over the bytecode, and turn into
-        // vec thing
-        let cur_char = bytecode.chars().nth(cur_idx).unwrap();
-
-        if cur_char == ' ' {
-            looking_for = NEXT_PARAM;
-            cur_params.push(String::from(""));
-        } else if cur_char == '\n' {
-            looking_for = NEXT_COMMAND;
-        } else if looking_for == NEXT_COMMAND {
-            cur_cmd.push(cur_char);
-        } else {
-            cur_params.last_mut().unwrap().push(cur_char);
-        }
-        cur_idx += 1;
-    }
+fn _preprocess_bytecode(bytecode: String) {
+    // now time to actually get working...
+    let mut macros: Vec<BytecodeMacro> = Vec::new();
 }
 
 fn compile_whitespace(_bytecode: String) {}
@@ -353,7 +892,7 @@ fn make_bytecode(
 ) -> String {
     let mut output = String::from("");
     let mut states: StateHolder = StateHolder { states: Vec::new() };
-    let mut command_stack: Vec<Paren> = Vec::new();
+    let mut command_stack: Vec<(Paren, usize)> = Vec::new();
     let mut cur_state_idx = 0;
     // push to the stack
     let mut to_push: (Option<State>, usize) = (None, 42);
@@ -375,9 +914,9 @@ fn make_bytecode(
 
     // init
     let mut cur_idx = 0;
-    println!("starting init...");
+    // println!("starting init...");
     loop {
-        println!("idx: {}", cur_idx);
+        // println!("idx: {}", cur_idx);
         if cur_idx >= contents.len() {
             break;
         }
@@ -401,7 +940,7 @@ fn make_bytecode(
 
     // this is a rewrite based on a tree diagram I wrote
     loop {
-        print!("\n");
+        // print!("\n");
         if to_push.0.is_some() {
             states.safe_push_state(to_push.0.unwrap(), to_push.1);
             to_push = (None, 42);
@@ -419,10 +958,10 @@ fn make_bytecode(
         }
         if cur_state.cur_idx > cur_state.end {
             // if it's the end of the state, break
-            println!(
-                "callback. cur_idx: {}\tend: {}, cur_state_idx: {}, callback: {}",
-                cur_state.cur_idx, cur_state.end, cur_state_idx, cur_state.callback_idx
-            );
+            // println!(
+            //     "callback. cur_idx: {}\tend: {}, cur_state_idx: {}, callback: {}",
+            //     cur_state.cur_idx, cur_state.end, cur_state_idx, cur_state.callback_idx
+            // );
             if cur_state_idx == 0 {
                 break;
             }
@@ -430,7 +969,7 @@ fn make_bytecode(
             continue;
         }
         if cur_state.dmode == SEARCHING_CMD {
-            print!("searching cmd");
+            // print!("searching cmd");
             cur_state.increment_cur_idx();
             if contents[cur_state.cur_idx].token_type == COMMAND {
                 cur_state.dmode = EVALUATING;
@@ -441,7 +980,7 @@ fn make_bytecode(
                 if states_len <= cur_state_idx {
                     // if there isn't a state
 
-                    println!("states.len: {}, idx: {}", states_len, cur_state_idx);
+                    // println!("states.len: {}, idx: {}", states_len, cur_state_idx);
                     to_push = (
                         Some(
                             *State::new()
@@ -462,17 +1001,17 @@ fn make_bytecode(
             continue;
         } else if cur_state.dmode == EVALUATING {
             cur_state.increment_def_idx();
-            print!(
-                "cmd: {} idx: {}\tcur state: {:?}\n",
-                cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()),
-                cur_state_idx,
-                cur_state,
-            );
+            // print!(
+            //     "cmd: {} idx: {}\tcur state: {:?}\n",
+            //     cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()),
+            //     cur_state_idx,
+            //     cur_state,
+            // );
 
             // match cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone()) {
             let cur_cmd_char = cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone());
             if cur_cmd_char == 'x' {
-                println!("Input is equal to a");
+                // println!("Input is equal to a");
                 continue;
             } else if cur_cmd_char == 'q' {
                 if cur_state_idx == 0 {
@@ -490,18 +1029,21 @@ fn make_bytecode(
 
                 continue;
             } else if cur_cmd_char == 'p' {
-                print!(
-                    "cur depth: {}\tstart depth: {}\n",
-                    contents[cur_state.cur_idx].depth, contents[cur_state.start].depth
-                );
+                // print!(
+                //     "cur depth: {}\tstart depth: {}\n",
+                //     contents[cur_state.cur_idx].depth, contents[cur_state.start].depth
+                // );
                 if contents[cur_state.cur_idx].depth > contents[cur_state.start].depth {
                     // if it's inside a param or not
                     // push start and end of param
-                    eprint!(
-                        "pushing! {:?}\n",
-                        parens[contents[cur_state.cur_idx].depth_plus_delta()]
-                    );
-                    command_stack.push(parens[contents[cur_state.cur_idx].depth_plus_delta()]);
+                    // eprint!(
+                    //     "pushing! {:?}\n",
+                    //     parens[contents[cur_state.cur_idx].depth_plus_delta()]
+                    // );
+                    command_stack.push((
+                        parens[contents[cur_state.cur_idx].depth_plus_delta()],
+                        cur_state_idx,
+                    ));
                     continue;
                 } else {
                     cur_state.dmode = SEARCHING_PARAM;
@@ -510,18 +1052,18 @@ fn make_bytecode(
             } else if cur_cmd_char == 's' {
                 cur_state.dmode = STRING_WRITING;
                 cur_state.increment_def_idx();
-                println!("String writing");
+                // println!("String writing");
                 continue;
             } else if cur_cmd_char == 'e' {
                 // pop and jump
-                print!("popping! {:?}\n", command_stack);
-                let cur_cmd = command_stack.pop().unwrap();
-                let old_state_idx = cur_state_idx;
+                // print!("popping! {:?}\n", command_stack);
+                let (cur_cmd, callback_idx) = command_stack.pop().unwrap();
+
                 cur_state_idx = contents[cur_cmd.start].depth_plus_delta();
                 if states_len <= cur_state_idx {
                     // if there isn't a state
 
-                    println!("states.len: {}, idx: {}", states_len, cur_state_idx);
+                    // println!("states.len: {}, idx: {}", states_len, cur_state_idx);
                     to_push = (
                         Some(
                             *State::new()
@@ -532,7 +1074,7 @@ fn make_bytecode(
                                 .set_end(parens[cur_state_idx].end)
                                 .set_dmode(SEARCHING_CMD)
                                 .set_is_escaped(false)
-                                .set_callback_idx(old_state_idx),
+                                .set_callback_idx(callback_idx),
                         ),
                         cur_state_idx,
                     );
@@ -545,9 +1087,9 @@ fn make_bytecode(
                 continue;
             } else if cur_cmd_char == 'w' {
                 // pop and jump
-                println!("command: {:?}", commands[cur_state.cmd_loc]);
-                let cur_cmd = command_stack.pop().unwrap();
-                let old_state_idx = cur_state_idx;
+                // println!("command: {:?}", commands[cur_state.cmd_loc]);
+                let (cur_cmd, callback_idx) = command_stack.pop().unwrap();
+
                 cur_state_idx = contents[cur_cmd.start].depth_plus_delta();
                 if states_len <= cur_state_idx {
                     // if there isn't a state
@@ -562,11 +1104,11 @@ fn make_bytecode(
                                 .set_end(parens[cur_state_idx].end)
                                 .set_dmode(WRITING)
                                 .set_is_escaped(false)
-                                .set_callback_idx(old_state_idx),
+                                .set_callback_idx(callback_idx),
                         ),
                         cur_state_idx,
                     );
-                    println!("in writing, pushing: {:#?}", to_push);
+                    // println!("in writing, pushing: {:#?}", to_push);
                     continue;
                 } else {
                     let mut next_state = states.get_state(cur_state_idx).clone();
@@ -577,13 +1119,13 @@ fn make_bytecode(
 
                 continue;
             } else {
-                print!("AAA dmode: {}\n", cur_cmd_char);
+                // print!("AAA dmode: {}\n", cur_cmd_char);
                 unimplemented!();
             }
             // }
         } else if cur_state.dmode == WRITING {
-            println!("Writing");
             let cur_char = contents[cur_state.cur_idx];
+            // println!("Writing, cur char: {}", cur_char.cur_char);
             if cur_state.cur_idx == cur_state.start && cur_char.token_type == OPEN_PAREN {
                 cur_state.increment_cur_idx();
                 continue;
@@ -592,6 +1134,7 @@ fn make_bytecode(
                     output.push(cur_char.cur_char);
                 }
                 //recurse up
+                cur_state.cur_idx = cur_state.start;
                 cur_state_idx = cur_state.callback_idx;
                 continue;
             }
@@ -599,10 +1142,10 @@ fn make_bytecode(
             cur_state.increment_cur_idx();
             continue;
         } else if cur_state.dmode == SEARCHING_PARAM {
-            print!(
-                "searching param\tcur_depth: {}, start_depth: {} \n",
-                contents[cur_state.cur_idx].depth, contents[cur_state.start].depth
-            );
+            // print!(
+            //     "searching param\tcur_depth: {}, start_depth: {} \n",
+            //     contents[cur_state.cur_idx].depth, contents[cur_state.start].depth
+            // );
             if contents[cur_state.cur_idx].depth > contents[cur_state.start].depth {
                 // if it's in a parameter
                 // fix for the evaluating block incrementing again
@@ -618,10 +1161,10 @@ fn make_bytecode(
             }
         } else if cur_state.dmode == STRING_WRITING {
             let cur_char = cur_state.next_def_cmd(commands[cur_state.cmd_loc].clone());
-            println!(
-                "String writing: char: {}, is_escaped: {}",
-                cur_char, cur_state.is_escaped
-            );
+            // println!(
+            //     "String writing: char: {}, is_escaped: {}",
+            //     cur_char, cur_state.is_escaped
+            // );
             if cur_char == ' ' && !cur_state.is_escaped {
                 cur_state.dmode = EVALUATING;
                 continue;
@@ -629,7 +1172,7 @@ fn make_bytecode(
             if cur_char == '\\' && !cur_state.is_escaped {
                 cur_state.is_escaped = true;
             } else if cur_state.is_escaped {
-                println!("===\nEscaped char: {}\n===", cur_char);
+                // println!("===\nEscaped char: {}\n===", cur_char);
                 match cur_char {
                     'n' => output.push('\n'),
                     't' => output.push('\t'),
@@ -643,7 +1186,7 @@ fn make_bytecode(
             cur_state.increment_def_idx();
             continue;
         } else {
-            println!("cur_state: {:#?}", cur_state);
+            // println!("cur_state: {:#?}", cur_state);
             unimplemented!();
         }
     }
@@ -693,7 +1236,7 @@ fn find_def(defs: String, searchfor: String) -> Command {
 
                 def.insert_str(0, "x");
                 default.insert_str(0, "x");
-                print!("found correct def! {} {}\n", cmd, def);
+                // print!("found correct def! {} {}\n", cmd, def);
                 return Command::new(cmd, default, def);
                 // break;
             }
@@ -741,10 +1284,10 @@ fn find_def(defs: String, searchfor: String) -> Command {
             is_escaped = false;
         }
     }
-    print!(
-        "found def: {:?}\n",
-        (cmd.clone(), default.clone(), def.clone())
-    );
+    // print!(
+    //     "found def: {:?}\n",
+    //     (cmd.clone(), default.clone(), def.clone())
+    // );
     if default.clone().is_empty() {
         default = String::from("q");
     }
@@ -765,7 +1308,7 @@ fn read_file(
     // contents: char, type, depth, delta
     // parens: start, end, command_location, matched
     // commands: command name, definition
-    print!("reading file!\n");
+    // print!("reading file!\n");
     let mut tmp = String::new();
     let mut file = File::open(FILENAME)?;
     // in the bootstrapped code, this will be implemented by just reading all
@@ -777,7 +1320,7 @@ fn read_file(
     let mut delta = 0;
     let mut token_type = OPEN_PAREN;
     let mut last_type;
-    print!("code:\n{}\n", tmp);
+    // print!("code:\n{}\n", tmp);
     let mut full_command = String::from("");
     for (i, c) in tmp.chars().enumerate() {
         last_type = token_type;
@@ -861,11 +1404,11 @@ fn read_file(
                 // );
                 if last_type == COMMAND {
                     if !commands.contains(&def) {
-                        print!(
-                            "found new command! {}\tputting at {}\n",
-                            full_command,
-                            commands.len()
-                        );
+                        // print!(
+                        //     "found new command! {}\tputting at {}\n",
+                        //     full_command,
+                        //     commands.len()
+                        // );
                         // pushes the def as well
                         commands.push(def);
 

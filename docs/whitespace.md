@@ -1,5 +1,8 @@
 # Whitespace Documentation
 
+current link:
+`https://excalidraw.com/#json=WkTOF3UD4UKdp0d5mXr44,B1MH5YNiUbY3TONYDXEX6Q`
+
 Compilation to whitespace will be through the following.
 
 ## Variable storage
@@ -72,8 +75,9 @@ arrays 1, N are just arrays as defined by user
 
 idx | what it has
  0  | number of vars (len of arr 0)
- 1  | 
-
+ 1  | work cell
+... | work cells
+ 9  | work cell
 ### Array i item 0
 
 item 0 of array i is just the length of array i
@@ -91,16 +95,73 @@ No stack prerequisites
   # offset by one for the 0 array
   add 1
   store
+  # make the currently selected array be 0
+  push 0 
 ```
 
-### nv $1
+### nv $l
 where $l is the index
 
 Stack:
 ```
+  |i| # i is arr number
+```
+does nothing for running purposes, only for compilation purposes and matching a value for the label $l to an index.
+
+### jta $k
+where $k is the array number
+stack prerequisite:
+```
   |i|
-  | |
-  | |
-  | |
-  |-|
+```
+where `i` is the old arary number
+
+
+outputs $k to the stack so that it can be used
+```
+  drop
+  push $k
+  
+```
+
+### jtv $k
+Where $k is the index of the variable in the arr
+Stack prereq:
+```
+  |i|
+```
+where i is the array to push to
+```
+  dup
+  push $k
+  call get_N
+  mul
+  add
+```
+returns the index of the variable desired on top of stack
+
+output:
+```
+  |j|
+  |i|
+```
+where `j` is the index of the variable specified
+
+### load $l $k $k2
+
+sets the $k2th WC to the $kth data cell at variable
+$l of current array
+
+```
+# index of variable
+push $l
+# get variable value
+call read_var_value
+# now the stack is [i, val], where val is the variable val
+push $k2
+#extract the $k2th cell of var
+call extract_var_cell
+# stack: [i, cell]
+
+
 ```

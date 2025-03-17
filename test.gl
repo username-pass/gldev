@@ -1,1 +1,7 @@
-(w (bc cond) (bc code))
+(bc (
+macro testmacro
+init 4
+endmacro testmacro
+testmacro
+newvar myvar
+))
