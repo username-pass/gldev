@@ -21,122 +21,78 @@ push 0
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 copy 1
 add
 
-add 47
-
 dup
-printc
-
-sub 47
+printi
 
 swap
 end

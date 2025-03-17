@@ -284,6 +284,7 @@ enum BytecodeInstruction {
     Set { c: usize },
     Clear,
     Printc,
+    Printi,
     Inputc,
     Error,
     End,
@@ -393,6 +394,13 @@ impl BytecodeInstruction {
                     None
                 }
             }
+            "printi" => {
+                if params.join("") == "" {
+                    Some(BytecodeInstruction::Printi)
+                } else {
+                    None
+                }
+            }
             "inputc" => {
                 if params.is_empty() {
                     Some(BytecodeInstruction::Inputc)
@@ -491,6 +499,7 @@ impl BytecodeInstruction {
             }
             BytecodeInstruction::Clear => "drop\npush 0\n".to_string(),
             BytecodeInstruction::Printc => "dup\nprintc\n".to_string(),
+            BytecodeInstruction::Printi => "dup\nprinti\n".to_string(),
             BytecodeInstruction::Inputc => "push -8\nreadc\npush -8\nretrieve\n".to_string(),
             BytecodeInstruction::Error => "call error_handler\n".to_string(),
             BytecodeInstruction::End => "end\n".to_string(),
@@ -596,7 +605,8 @@ impl BytecodeInstruction {
         return [
             "macro", "endmacro", "init", "newvar", "jta", "jtv", "jtc", "nextvar", "nextarr",
             "nextchar", "prevvar", "prevarr", "prevchar", "while", "end", "load", "swap", "sub",
-            "add", "put", "addc", "subc", "set", "clear", "printc", "inputc", "error", "exit",
+            "add", "put", "addc", "subc", "set", "clear", "printc", "printi", "inputc", "error",
+            "exit",
         ]
         .contains(&test);
     }
