@@ -490,7 +490,7 @@ impl BytecodeInstruction {
                 format!("drop\npush {}\n", c)
             }
             BytecodeInstruction::Clear => "drop\npush 0\n".to_string(),
-            BytecodeInstruction::Printc => "printc\n".to_string(),
+            BytecodeInstruction::Printc => "dup\nprintc\n".to_string(),
             BytecodeInstruction::Inputc => "push -8\nreadc\npush -8\nretrieve\n".to_string(),
             BytecodeInstruction::Error => "call error_handler\n".to_string(),
             BytecodeInstruction::End => "end\n".to_string(),
