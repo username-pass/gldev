@@ -505,6 +505,7 @@ impl BytecodeInstruction {
             "set_j",
             "set_k",
             "set_x",
+            "get_x",
             "get_i",
             "get_i_last",
             "get_j",
@@ -538,6 +539,10 @@ impl BytecodeInstruction {
             "push -2\nretrieve\npush -3\nretrieve\npush -1\nretrieve\nmul\nadd\nret\n",
         );
         lib.insert("get_i", "push -2\nretrieve\nret\n");
+        lib.insert(
+            "get_x",
+            "call get_j\ncall get_N\nmul\ncall get_i\nadd\nret\n",
+        );
         lib.insert("get_i_last", "push -5\nretrieve\nret\n");
         lib.insert("get_j", "push -3\nretrieve\nret\n");
         lib.insert("get_j_last", "push -6\nretrieve\nret\n");

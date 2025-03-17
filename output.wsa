@@ -79,6 +79,15 @@ add
 ret
 
 end
+label get_x
+call get_j
+call get_N
+mul
+call get_i
+add
+ret
+
+end
 label get_i
 push -2
 retrieve
