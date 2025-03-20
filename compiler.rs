@@ -5,6 +5,12 @@ use std::io::prelude::*;
 const FILENAME: &str = "test.gl";
 
 /*
+TODO:
+ - remove 'k' in the ws prog. Make it so that it's just a 2D arr
+ - finish the program
+
+*/
+
 const SOLO_PARAM: u8 = 0;
 const COMMAND: u8 = 1;
 const DELIMINATOR: u8 = 2;
@@ -486,8 +492,9 @@ impl BytecodeInstruction {
             BytecodeInstruction::Swap => "swap".to_string(),
             BytecodeInstruction::Sub => "copy 1\nsub\n".to_string(),
             BytecodeInstruction::Add => "copy 1\nadd\n".to_string(),
+            // removed get_k to make it a 2d array
             BytecodeInstruction::Put => {
-                "call get_k\ncall get_val\ncall set_val\ncall get_x\nstore\ndrop".to_string()
+                "call get_val\ncall set_val\ncall get_x\nstore\ndrop".to_string()
             }
             BytecodeInstruction::AddC { c } => {
                 format!("add {}\n", c)
@@ -583,10 +590,15 @@ impl BytecodeInstruction {
             "dec_k",
             "push -7\npush -4\nretrieve\nstore\npush -4\npush -4\npush 1\nsub\nstore\nret\n",
         );
-        lib.insert("get_val", "push -4\nretrieve\nretrieve\nswap\nlabel get_val_loop\ndup\njz get_val_end\nsub 1\nswap\ndiv 256\nswap\njmp get_val_loop\nlabel get_val_end\nswap\nmod 256\nret\n");
+
+        // new stuff for simplified program
+        lib.insert("get_val", "call get_x\nretrieve\n");
+        lib.insert("set_val", "call get_x\nswap\nstore");
+
+        // lib.insert("get_val", "push -4\nretrieve\nretrieve\nswap\nlabel get_val_loop\ndup\njz get_val_end\nsub 1\nswap\ndiv 256\nswap\njmp get_val_loop\nlabel get_val_end\nswap\nmod 256\nret\n");
 
         // This thing took me 5 HOURS!!! (And I still got it wrong...l
-        lib.insert("set_val", "dup\npush -12\nswap\nstore\npush -13\npush -4\nretrieve\nstore\nretrieve\npush -10\npush 1\nstore\npush -11\npush 0\nstore\ncall set_value\nret\nlabel set_value\nmul -1\ncall unroll_counter\npush -12\npush 19 store\npush -13\npush 1\nstore\ncall reroll\nret\nlabel unroll_counter\nmul -1\ndup\nmod 256\nswap\npush -11\nretrieve\nadd 1\npush -11\nswap\nstore\ndiv 256\nmul -1\ndup\njn unroll_counter\nret\nlabel reroll\npush -13\nretrieve\njz change_val\njmp change_val_end\nlabel change_val\ndrop push -12\nretrieve\nlabel change_val_end\npush -13\nretrieve\nsub 1\npush -13\nswap\nstore\nmul 256\nadd\npush -11\nretrieve\nsub 1\npush -11\nswap\nstore\npush -11\nretrieve\nmul -1\njn reroll\nret\n");
+        // lib.insert("set_val", "dup\npush -12\nswap\nstore\npush -13\npush -4\nretrieve\nstore\nretrieve\npush -10\npush 1\nstore\npush -11\npush 0\nstore\ncall set_value\nret\nlabel set_value\nmul -1\ncall unroll_counter\npush -12\npush 19 store\npush -13\npush 1\nstore\ncall reroll\nret\nlabel unroll_counter\nmul -1\ndup\nmod 256\nswap\npush -11\nretrieve\nadd 1\npush -11\nswap\nstore\ndiv 256\nmul -1\ndup\njn unroll_counter\nret\nlabel reroll\npush -13\nretrieve\njz change_val\njmp change_val_end\nlabel change_val\ndrop push -12\nretrieve\nlabel change_val_end\npush -13\nretrieve\nsub 1\npush -13\nswap\nstore\nmul 256\nadd\npush -11\nretrieve\nsub 1\npush -11\nswap\nstore\npush -11\nretrieve\nmul -1\njn reroll\nret\n");
 
         for key in libkeys {
             let def = lib.get(key).unwrap();
