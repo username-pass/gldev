@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::prelude::*;
 const FILENAME: &str = "test.gl";
 
+/*
 const SOLO_PARAM: u8 = 0;
 const COMMAND: u8 = 1;
 const DELIMINATOR: u8 = 2;

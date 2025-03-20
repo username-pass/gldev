@@ -1,0 +1,4 @@
+(
+	(~ A (input (input your number)))
+	(print (+ A (# 1)))
+)
